@@ -197,7 +197,9 @@ glossary.json           专业术语表
 
 `./bin/benchmark speech-16k.wav --language auto` 可选测量模型处理耗时，它使用固定 6 秒片段，不能代表界面断句策略或采集端到端延迟；报告包含字幕文字，请勿提交。
 
-可选 `./bin/install` 构建并安装 Arch 包，添加桌面入口。安装只包含应用二进制、图标、文档和词表；模型服务仍需从项目启动。安装模式默认导出到 `~/.local/share/live-sub/sessions/`。
+`./bin/install` 构建并安装 Arch 包，添加桌面入口。安装包含应用二进制、启动入口、图标、文档和词表；从启动器打开时会自动检查并启动项目模型服务，再运行 `/usr/bin/live-sub`。安装模式默认导出到 `~/.local/share/live-sub/sessions/`。
+
+模型、推理引擎和独立 Python 环境继续保留在本机项目目录，不复制进系统包。安装包记录构建时的项目路径，因此请保留该目录；迁移后重新安装，或通过 `LIVE_SUB_PROJECT=/new/project/path live-sub-launch` 指定位置。仅卸载应用包不会删除项目中的模型或字幕。
 
 ## 许可与上游
 

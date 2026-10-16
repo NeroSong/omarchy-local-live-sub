@@ -2,7 +2,7 @@
 Type=Application
 Name=Omarchy Local Live Sub
 Comment=本地双语会议字幕
-Exec=live-sub
+Exec=live-sub-launch
 Icon=live-sub
 Terminal=false
 Categories=AudioVideo;Utility;

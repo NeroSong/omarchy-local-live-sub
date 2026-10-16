@@ -1,11 +1,11 @@
 pkgname=live-sub
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Local bilingual captions for technical discussions'
 arch=('x86_64' 'aarch64')
 license=('MIT')
 options=('!debug')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'ffmpeg' 'libpulse')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'ffmpeg' 'libpulse' 'qt6-svg' 'python' 'libnotify')
 makedepends=('gcc' 'make')
 source=()
 sha256sums=()
@@ -18,6 +18,9 @@ build() {
 package() {
   cd "$startdir/.."
   install -Dm755 build/live-sub "$pkgdir/usr/bin/live-sub"
+  install -Dm755 bin/live-sub-launch "$pkgdir/usr/bin/live-sub-launch"
+  install -dm755 "$pkgdir/usr/share/live-sub"
+  printf '%s\n' "$PWD" > "$pkgdir/usr/share/live-sub/project-root"
   install -Dm644 glossary.json "$pkgdir/usr/share/live-sub/glossary.json"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/live-sub/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/live-sub/README.md"

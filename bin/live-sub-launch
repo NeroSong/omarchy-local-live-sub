@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Desktop entry: start local model services, then the packaged Qt application."""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+try:
+    supplied = os.environ.get('LIVE_SUB_PROJECT')
+    location = Path('/usr/share/live-sub/project-root')
+    root = Path(supplied if supplied else location.read_text().strip()).resolve()
+    start = root / 'bin/start'
+    if not start.is_file():
+        raise RuntimeError(f'模型运行目录不可用：{root}。请保留项目目录，或设置 LIVE_SUB_PROJECT 后启动。')
+    os.environ['LIVE_SUB_UI_BINARY'] = '/usr/bin/live-sub'
+    os.environ.setdefault('LIVE_SUB_ROOT', '/usr/share/live-sub')
+    os.environ['LIVE_SUB_FOREGROUND'] = '1'
+    code = subprocess.call([str(start), *sys.argv[1:]], cwd=root)
+    if code != 0:
+        raise RuntimeError(f'模型或字幕窗口启动失败，请查看 {root / "runtime/logs"}。')
+except (OSError, RuntimeError) as error:
+    message = str(error)
+    print(message, file=sys.stderr)
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '--app-name=Omarchy Local Live Sub', '--urgency=critical', '字幕应用无法启动', message])
+    sys.exit(1)

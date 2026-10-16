@@ -55,12 +55,14 @@ try:
     elif not owned():
         sys.exit("Ports are served by an untracked process. No existing service was changed.")
     with (logs / "ui.log").open("w") as output:
-        window = subprocess.Popen([str(root / "bin/run")], cwd=root, stdin=subprocess.DEVNULL,
+        window = subprocess.Popen([os.environ.get("LIVE_SUB_UI_BINARY", str(root / "bin/run")), *sys.argv[1:]], cwd=root, stdin=subprocess.DEVNULL,
             stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
     time.sleep(1)
     if window.poll() is not None:
         sys.exit(f"Window did not open. See {logs / 'ui.log'}")
     print(f"Caption window opened (PID {window.pid}). Click 开始字幕 to acquire the microphone.")
     print("Model services remain running after closing the window. Use bin/models-stop to release them.")
+    if os.environ.get("LIVE_SUB_FOREGROUND") == "1":
+        sys.exit(window.wait())
 except OSError as error:
     sys.exit(str(error))
