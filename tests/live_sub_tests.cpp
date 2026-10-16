@@ -159,6 +159,14 @@ private slots:
             QString("Omarchy is great. I love Omarchy. As the system Omarchy is great. Omarchy. Omarchy."));
         QCOMPARE(terms.correct("so much and too much").text, QString("Omarchy and Omarchy"));
     }
+    void comeIsExemptEvenInsideForcedMultiwordCandidates() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        for (const auto &text : {"Come on.", "I come here.", "come", "COME", "Please come back."})
+            QCOMPARE(terms.correct(text).text, QString(text));
+        QCOMPARE(terms.correct("Come to O much. Oh much is great.").text,
+            QString("Come to Omarchy. Omarchy is great."));
+    }
 };
 QTEST_GUILESS_MAIN(LiveSubTests)
 #include "live_sub_tests.moc"

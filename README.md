@@ -159,7 +159,7 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 默认仅为 Omarchy、Hyprland 开启相似拼写修复。不会将 `much`、`rest` 等普通词单独改成术语；多条同等规则无法确定目标时跳过。规则同时匹配原始文字，不连续猜改；代码片段、链接、邮箱、路径和长命令选项保持原样。中英文相邻时仍可匹配术语，不要求汉字间有空格。
 
-**Omarchy 强制模式（当前启用）**：按用户指定优先保证名称统一，允许误改。该条目的 `force_phonetic: true` 会绕过上下文要求和普通代码保护，强制处理已知别名、`force_patterns` 中的宽松中英文近音模式，以及合并最多三个英文词后的粗略发音键匹配。`Oh much`、`Oh, matching`、`Oh, Martin`、`how much`、`No, match`、`Oh mary`、`Or or ma`、`O mar key` 和中文音译会统一为 Omarchy；`so much`、`too much` 也会强制替换，不再保留这些普通短语；monarchy、anarchy 也已作为强制别名纳入。发音键使用字母归并和宽松编辑距离，并不是音频级发音判断；未覆盖的语言或完全不同的识别文字仍可能漏掉。强制规则优先级高于其他术语规则；保留 `raw` 与纠错记录。将该开关设为 false 可恢复保守行为。以上普通词和代码保护说明只适用于未启用强制模式的词条。
+**Omarchy 强制模式（当前启用）**：按用户指定优先保证名称统一，允许误改。该条目的 `force_phonetic: true` 会绕过上下文要求和普通代码保护，强制处理已知别名、`force_patterns` 中的宽松中英文近音模式，以及合并最多三个英文词后的粗略发音键匹配。`Oh much`、`Oh, matching`、`Oh, Martin`、`how much`、`No, match`、`Oh mary`、`Or or ma`、`O mar key` 和中文音译会统一为 Omarchy；`so much`、`too much` 也会强制替换，不再保留这些普通短语；monarchy、anarchy 也已作为强制别名纳入。发音键使用字母归并和宽松编辑距离，并不是音频级发音判断；未覆盖的语言或完全不同的识别文字仍可能漏掉。强制规则优先级高于其他术语规则；保留 `raw` 与纠错记录。`preserve` 列表中的完整词优先保留，大小写不敏感；当前包括 `come`。任何跨越该词的多词近音候选也禁止替换，避免把 `I come`、`Come on` 整段吞掉。将该开关设为 false 可恢复保守行为。以上普通词和代码保护说明只适用于未启用强制模式的词条。
 
 例如 `O much 使用 Hyprlnd 作为 Linux 桌面` 会修正为 `Omarchy 使用 Hyprland 作为 Linux 桌面`。单独的 `Hyprlnd` 缺少上下文时保留，未知的近音错词也不会凭空猜测，可根据实际收音继续补充别名。SenseVoice 不使用 Whisper 式提示词；此机制在识别之后运行，翻译提示中仍保留标准名称。
 

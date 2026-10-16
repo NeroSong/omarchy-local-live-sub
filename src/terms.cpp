@@ -74,7 +74,7 @@ bool Terms::load(const QString &path, QString &error) {
         if (item.value("term").toString().trimmed().isEmpty() || !item.value("aliases").isArray()) {
             error = "每个术语需要非空 term 和 aliases 数组"; return false;
         }
-        for (const auto &field : {"aliases", "context_aliases", "context", "force_aliases", "force_patterns"}) {
+        for (const auto &field : {"aliases", "context_aliases", "context", "force_aliases", "force_patterns", "preserve"}) {
             if (!item.contains(field)) continue;
             if (!item.value(field).isArray()) { error = QString(field) + " 必须是字符串数组"; return false; }
             for (const auto &alias : item.value(field).toArray())
@@ -116,6 +116,7 @@ Terms::Result Terms::correct(const QString &text, const QString &context) const 
     for (const auto &value : entries) {
         const auto item = value.toObject();
         const auto name = item.value("term").toString();
+        const int candidateStart = candidates.size();
         bool hasContext = false;
         auto contexts = item.value("context").toArray();
         contexts.append(name);
@@ -184,7 +185,20 @@ Terms::Result Terms::correct(const QString &text, const QString &context) const 
             }
         }
         if (hasContext) collect(item.value("context_aliases").toArray(), 2, "context_alias");
-        if (!hasContext || !item.value("fuzzy").toBool()) continue;
+        // Exempt whole words even when a forced multiword candidate spans them.
+        auto preserveWords = [&] {
+            for (const auto &word : item.value("preserve").toArray()) {
+                auto matches = QRegularExpression(literalPattern(word.toString()), options).globalMatch(text);
+                while (matches.hasNext()) {
+                    const auto match = matches.next();
+                    for (int i = candidates.size() - 1; i >= candidateStart; --i)
+                        if (candidates[i].start < match.capturedEnd()
+                            && candidates[i].start + candidates[i].length > match.capturedStart())
+                            candidates.removeAt(i);
+                }
+            }
+        };
+        if (!hasContext || !item.value("fuzzy").toBool()) { preserveWords(); continue; }
         const QRegularExpression wordPattern("(?<![\\p{Latin}\\p{N}_./:@-])[A-Za-z]{6,20}(?![\\p{Latin}\\p{N}_./:@-])", options);
         auto words = wordPattern.globalMatch(text);
         while (words.hasNext()) {
@@ -192,6 +206,7 @@ Terms::Result Terms::correct(const QString &text, const QString &context) const 
             if (nearSpelling(word.captured(), name) && !isProtected(word.capturedStart(), word.capturedEnd()))
                 candidates.append({int(word.capturedStart()), int(word.capturedLength()), name, "context_spelling", 1});
         }
+        preserveWords();
     }
     // Resolve against the original text, so replacements cannot cascade into other rules.
     std::sort(candidates.begin(), candidates.end(), [](const Match &a, const Match &b) {
