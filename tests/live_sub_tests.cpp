@@ -112,6 +112,37 @@ private slots:
         QVERIFY(!terms.load(f.fileName(), error));
         QCOMPARE(terms.normalize("Ohmarchy"), QString("Omarchy"));
     }
+    void glossaryRepairsReportedAliasAndUsesContextForGuesses() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        const auto corrected = terms.correct("O much 使用 Hyprlnd 作为桌面。", "Linux");
+        QCOMPARE(corrected.text, QString("Omarchy 使用 Hyprland 作为桌面。"));
+        QCOMPARE(corrected.corrections.size(), 2);
+        QCOMPARE(corrected.corrections.first().toMap().value("from").toString(), QString("O much"));
+        QCOMPARE(corrected.corrections.first().toMap().value("to").toString(), QString("Omarchy"));
+        QCOMPARE(terms.correct("欧马奇的桌面使用海普兰德。").text, QString("Omarchy的桌面使用Hyprland。"));
+        QCOMPARE(terms.correct("Hyprlnd 和欧马奇").text, QString("Hyprlnd 和欧马奇"));
+        QCOMPARE(terms.correct("Hyprlnad", "Wayland compositor").text, QString("Hyprland"));
+    }
+    void glossaryPreservesCodePathsAndOrdinaryWords() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        const QString raw = "so much, too much, rest, trust, anarchy, hyper landscape; "
+            "`O much` https://example.com/Hyprlnd /tmp/Hyprlnd --Hyprlnd "
+            "```\nO much\n```";
+        QCOMPARE(terms.correct(raw, "Linux desktop").text, raw);
+        const auto corrected = terms.correct("配置Hyprland，O   much 和 Omarchyy。", "Linux");
+        QCOMPARE(corrected.text, QString("配置Hyprland，Omarchy 和 Omarchy。"));
+        QCOMPARE(terms.correct(corrected.text, "Linux").corrections.size(), 0);
+    }
+    void glossarySkipsAmbiguousSpellingCandidates() {
+        QTemporaryDir dir;
+        QFile file(dir.filePath("terms.json")); QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(R"([{"term":"abcdefg","aliases":[],"context":["Linux"],"fuzzy":true},
+                       {"term":"abcxefg","aliases":[],"context":["Linux"],"fuzzy":true}])"); file.close();
+        Terms terms; QString error; QVERIFY(terms.load(file.fileName(), error));
+        QCOMPARE(terms.correct("abcqefg", "Linux").text, QString("abcqefg"));
+    }
 };
 QTEST_GUILESS_MAIN(LiveSubTests)
 #include "live_sub_tests.moc"

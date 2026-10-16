@@ -1,0 +1,752 @@
+{
+  "status": "proposal_only_not_loaded_by_decoder",
+  "collected_on": "2026-10-17",
+  "window": {
+    "from": "2026-08-18",
+    "through": "2026-10-17"
+  },
+  "method": {
+    "corpus": "English official home page plus 36 news article bodies; index used for discovery only",
+    "exclusions": [
+      "navigation",
+      "footer",
+      "scripts",
+      "styles",
+      "article header and date",
+      "home news excerpts"
+    ],
+    "counting": "Case-insensitive complete tokens; no stemming, plural merging, compound merging or translation merging",
+    "candidate_scope": "Curated named technical/product/platform terms; not a ranking of every word on the site",
+    "ranking": "occurrence count descending, then document count descending, then name",
+    "known_biases": [
+      "Home page includes visible testimonials and product descriptions",
+      "News is heavily weighted toward sponsorship and staff announcements",
+      "Go excluded because raw token frequency conflates the language and the verb"
+    ],
+    "weights": "Qualitative proposals, not decoder scores or tuned parameters"
+  },
+  "frequency_top10": [
+    {
+      "term": "Omarchy",
+      "count": 304,
+      "documents": 37,
+      "home_count": 95,
+      "news_count": 209
+    },
+    {
+      "term": "Linux",
+      "count": 84,
+      "documents": 27,
+      "home_count": 22,
+      "news_count": 62
+    },
+    {
+      "term": "Omacom",
+      "count": 33,
+      "documents": 26,
+      "home_count": 1,
+      "news_count": 32
+    },
+    {
+      "term": "Windows",
+      "count": 30,
+      "documents": 5,
+      "home_count": 26,
+      "news_count": 4
+    },
+    {
+      "term": "AI",
+      "count": 20,
+      "documents": 8,
+      "home_count": 8,
+      "news_count": 12
+    },
+    {
+      "term": "Apple",
+      "count": 17,
+      "documents": 6,
+      "home_count": 1,
+      "news_count": 16
+    },
+    {
+      "term": "ARM",
+      "count": 17,
+      "documents": 4,
+      "home_count": 0,
+      "news_count": 17
+    },
+    {
+      "term": "Mac",
+      "count": 17,
+      "documents": 4,
+      "home_count": 8,
+      "news_count": 9
+    },
+    {
+      "term": "Quattro",
+      "count": 15,
+      "documents": 9,
+      "home_count": 3,
+      "news_count": 12
+    },
+    {
+      "term": "DigitalOcean",
+      "count": 14,
+      "documents": 6,
+      "home_count": 0,
+      "news_count": 14
+    }
+  ],
+  "recommended_hotwords": [
+    {
+      "term": "Omarchy",
+      "count": 304,
+      "documents": 37,
+      "home_count": 95,
+      "news_count": 209,
+      "priority": "high",
+      "reason": "核心项目名称，已观察到 O much 误识别"
+    },
+    {
+      "term": "Hyprland",
+      "count": 11,
+      "documents": 4,
+      "home_count": 4,
+      "news_count": 7,
+      "priority": "high",
+      "reason": "核心桌面组件，已明确需要优化"
+    },
+    {
+      "term": "Quickshell",
+      "count": 12,
+      "documents": 7,
+      "home_count": 2,
+      "news_count": 10,
+      "priority": "medium",
+      "reason": "高相关桌面组件，新闻中反复出现"
+    },
+    {
+      "term": "Omacom",
+      "count": 33,
+      "documents": 26,
+      "home_count": 1,
+      "news_count": 32,
+      "priority": "medium",
+      "reason": "与项目治理相关的专有名称"
+    },
+    {
+      "term": "Quattro",
+      "count": 15,
+      "documents": 9,
+      "home_count": 3,
+      "news_count": 12,
+      "priority": "medium",
+      "reason": "项目版本 / 代号"
+    },
+    {
+      "term": "Linux",
+      "count": 84,
+      "documents": 27,
+      "home_count": 22,
+      "news_count": 62,
+      "priority": "low",
+      "reason": "高频通用技术名称，避免过度增强"
+    },
+    {
+      "term": "Arch",
+      "count": 7,
+      "documents": 4,
+      "home_count": 4,
+      "news_count": 3,
+      "priority": "low",
+      "reason": "基础发行版名称，也可能是普通英语词"
+    },
+    {
+      "term": "mise",
+      "count": 10,
+      "documents": 4,
+      "home_count": 1,
+      "news_count": 9,
+      "priority": "low",
+      "reason": "技术工具，但也是短词，容易误触发"
+    },
+    {
+      "term": "Neovim",
+      "count": 5,
+      "documents": 4,
+      "home_count": 2,
+      "news_count": 3,
+      "priority": "medium",
+      "reason": "开源讨论常见工具名"
+    },
+    {
+      "term": "Rust",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1,
+      "priority": "low",
+      "reason": "用户明确讨论范围，普通英语词也有该拼写"
+    }
+  ],
+  "counts": [
+    {
+      "term": "Omarchy",
+      "count": 304,
+      "documents": 37,
+      "home_count": 95,
+      "news_count": 209
+    },
+    {
+      "term": "Linux",
+      "count": 84,
+      "documents": 27,
+      "home_count": 22,
+      "news_count": 62
+    },
+    {
+      "term": "Omacom",
+      "count": 33,
+      "documents": 26,
+      "home_count": 1,
+      "news_count": 32
+    },
+    {
+      "term": "Windows",
+      "count": 30,
+      "documents": 5,
+      "home_count": 26,
+      "news_count": 4
+    },
+    {
+      "term": "AI",
+      "count": 20,
+      "documents": 8,
+      "home_count": 8,
+      "news_count": 12
+    },
+    {
+      "term": "Apple",
+      "count": 17,
+      "documents": 6,
+      "home_count": 1,
+      "news_count": 16
+    },
+    {
+      "term": "ARM",
+      "count": 17,
+      "documents": 4,
+      "home_count": 0,
+      "news_count": 17
+    },
+    {
+      "term": "Mac",
+      "count": 17,
+      "documents": 4,
+      "home_count": 8,
+      "news_count": 9
+    },
+    {
+      "term": "Quattro",
+      "count": 15,
+      "documents": 9,
+      "home_count": 3,
+      "news_count": 12
+    },
+    {
+      "term": "DigitalOcean",
+      "count": 14,
+      "documents": 6,
+      "home_count": 0,
+      "news_count": 14
+    },
+    {
+      "term": "DHH",
+      "count": 14,
+      "documents": 2,
+      "home_count": 13,
+      "news_count": 1
+    },
+    {
+      "term": "Quickshell",
+      "count": 12,
+      "documents": 7,
+      "home_count": 2,
+      "news_count": 10
+    },
+    {
+      "term": "Alibaba",
+      "count": 12,
+      "documents": 5,
+      "home_count": 0,
+      "news_count": 12
+    },
+    {
+      "term": "Snapdragon",
+      "count": 12,
+      "documents": 4,
+      "home_count": 1,
+      "news_count": 11
+    },
+    {
+      "term": "Hyprland",
+      "count": 11,
+      "documents": 4,
+      "home_count": 4,
+      "news_count": 7
+    },
+    {
+      "term": "macOS",
+      "count": 11,
+      "documents": 3,
+      "home_count": 4,
+      "news_count": 7
+    },
+    {
+      "term": "ISO",
+      "count": 10,
+      "documents": 5,
+      "home_count": 3,
+      "news_count": 7
+    },
+    {
+      "term": "mise",
+      "count": 10,
+      "documents": 4,
+      "home_count": 1,
+      "news_count": 9
+    },
+    {
+      "term": "Greptile",
+      "count": 10,
+      "documents": 2,
+      "home_count": 0,
+      "news_count": 10
+    },
+    {
+      "term": "37signals",
+      "count": 9,
+      "documents": 6,
+      "home_count": 0,
+      "news_count": 9
+    },
+    {
+      "term": "1Password",
+      "count": 8,
+      "documents": 5,
+      "home_count": 0,
+      "news_count": 8
+    },
+    {
+      "term": "GitHub",
+      "count": 8,
+      "documents": 4,
+      "home_count": 3,
+      "news_count": 5
+    },
+    {
+      "term": "Namespace",
+      "count": 8,
+      "documents": 3,
+      "home_count": 0,
+      "news_count": 8
+    },
+    {
+      "term": "Arch",
+      "count": 7,
+      "documents": 4,
+      "home_count": 4,
+      "news_count": 3
+    },
+    {
+      "term": "Grok",
+      "count": 7,
+      "documents": 4,
+      "home_count": 2,
+      "news_count": 5
+    },
+    {
+      "term": "Ruby",
+      "count": 7,
+      "documents": 3,
+      "home_count": 1,
+      "news_count": 6
+    },
+    {
+      "term": "SpaceXSI",
+      "count": 7,
+      "documents": 3,
+      "home_count": 1,
+      "news_count": 6
+    },
+    {
+      "term": "OpenClaw",
+      "count": 6,
+      "documents": 4,
+      "home_count": 1,
+      "news_count": 5
+    },
+    {
+      "term": "Discord",
+      "count": 5,
+      "documents": 4,
+      "home_count": 1,
+      "news_count": 4
+    },
+    {
+      "term": "Neovim",
+      "count": 5,
+      "documents": 4,
+      "home_count": 2,
+      "news_count": 3
+    },
+    {
+      "term": "Cloudflare",
+      "count": 4,
+      "documents": 3,
+      "home_count": 0,
+      "news_count": 4
+    },
+    {
+      "term": "Vim",
+      "count": 4,
+      "documents": 2,
+      "home_count": 2,
+      "news_count": 2
+    },
+    {
+      "term": "HackerOne",
+      "count": 3,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 3
+    },
+    {
+      "term": "Qualcomm",
+      "count": 3,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 3
+    },
+    {
+      "term": "Steam",
+      "count": 3,
+      "documents": 1,
+      "home_count": 3,
+      "news_count": 0
+    },
+    {
+      "term": "aarch64",
+      "count": 2,
+      "documents": 2,
+      "home_count": 0,
+      "news_count": 2
+    },
+    {
+      "term": "Codex",
+      "count": 2,
+      "documents": 2,
+      "home_count": 1,
+      "news_count": 1
+    },
+    {
+      "term": "Node",
+      "count": 2,
+      "documents": 2,
+      "home_count": 1,
+      "news_count": 1
+    },
+    {
+      "term": "QEMU",
+      "count": 2,
+      "documents": 2,
+      "home_count": 0,
+      "news_count": 2
+    },
+    {
+      "term": "Zed",
+      "count": 2,
+      "documents": 2,
+      "home_count": 1,
+      "news_count": 1
+    },
+    {
+      "term": "Asahi",
+      "count": 2,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 2
+    },
+    {
+      "term": "Proton",
+      "count": 2,
+      "documents": 1,
+      "home_count": 2,
+      "news_count": 0
+    },
+    {
+      "term": "ARM64",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "Basecamp",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "Claude",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "Docker",
+      "count": 1,
+      "documents": 1,
+      "home_count": 1,
+      "news_count": 0
+    },
+    {
+      "term": "HEY",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "KVM",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "Omakub",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "PipeWire",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "Rust",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "systemd",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    },
+    {
+      "term": "ThePrimeagen",
+      "count": 1,
+      "documents": 1,
+      "home_count": 0,
+      "news_count": 1
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://omarchy.org/",
+      "date": null,
+      "sha256": "17b4f960a22626cb90369d5fa0d5f8eaefe3776c5314a805881673fb10d18c66"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/10/greptile-joins-as-a-distinguished-corporate-patron/",
+      "date": "2026-10-15",
+      "sha256": "b0baa3389c80d63984b46f328895ec39bf680e2835536ea5a53d7bfe813fbce2"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/10/namespace-joins-as-a-distinguished-corporate-patron/",
+      "date": "2026-10-09",
+      "sha256": "b6eed7d0366ffc72670a36ba48a7b36923c4c97d3122868b7fb8544a7594796e"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/10/spacexai-joins-as-founding-corporate-patron/",
+      "date": "2026-10-08",
+      "sha256": "1cccc12d5bb43d0b70858b031a9c69953bf51cb805f0f1fff81352e7001f15cc"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/10/omarchy-launches-bug-bounty-program-on-hackerone/",
+      "date": "2026-10-02",
+      "sha256": "c09a621f830b49250b2e3dc7595e2511cb9a77f37ed6e139f9757e81db242537"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/theprimeagen-joins-omarchy-core/",
+      "date": "2026-09-26",
+      "sha256": "8e8fb604445a6fe48e758d5947bb5c15ad74bc47a110ffae2b9c5876e467436e"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-to-be-premier-sponsor-of-0xsero/",
+      "date": "2026-09-23",
+      "sha256": "27c75ead3d277f9b007df3ac910f077d7fa053dab704654ae17f2cd61970a894"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/alibaba-cloud-joins-as-founding-corporate-patron/",
+      "date": "2026-09-22",
+      "sha256": "c0adf3251906fb1c8f5b90e890fd1f35a6999210c9d98e675d4e1ab15fca56d4"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/introducing-omarchy-dragon/",
+      "date": "2026-09-18",
+      "sha256": "1297ffda137dbdfd9faf281efe668a1256440d5b3a40ae5e31cd1f5445d06094"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/orcarouter-joins-as-a-distinguished-corporate-patron/",
+      "date": "2026-09-17",
+      "sha256": "9c0dba2731fef4b79baea9b8e6368f38983a77b29e3119993c58b654416d5b7c"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/brian-cartmell-and-american-cloud-join-as-open-patronage-doubles/",
+      "date": "2026-09-17",
+      "sha256": "dafc07adaa71d40de373f6c6708cafe8453eafab26ef9f6964c155df190fb212"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/introducing-omarchy-m/",
+      "date": "2026-09-11",
+      "sha256": "05e3fcb6ebfa999e9e6f85106ec1b406b296c93fdc77fe03080b37131b42e025"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-hires-emir-beganovic/",
+      "date": "2026-09-10",
+      "sha256": "18fe3c71fc6fdfb407623eca7d5a9d365d75a440f2e653e9e3fc8a6ceae15537"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/digitalocean-joins-as-founding-corporate-patron/",
+      "date": "2026-09-09",
+      "sha256": "d7c757cb7d565582c38666af29b7c63cb3891c7a6f4e3981d1740dd46706fc77"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-hires-outfoxxed/",
+      "date": "2026-09-09",
+      "sha256": "b95bf1d666f55b6bb55830ab3ecdc1488165ad461c30c3b325a50d51e44f5754"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-raises-another-half-a-million-dollars/",
+      "date": "2026-09-07",
+      "sha256": "a85b34ea6c56a668149d5fe807b5d06057a54097991c67468ca61a5a026a7d89"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omarchy-org-redesign-launches-with-29-languages/",
+      "date": "2026-09-07",
+      "sha256": "9fc1ebfb80159c3088d87a286865862ca10e3c3c124cecd9a91ca5133671ce18"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-secures-tokens-from-leading-labs/",
+      "date": "2026-09-03",
+      "sha256": "a018437d04a217d0a6d08b61a483b9973fe1a77df989416f6ef02355fb3faaf0"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-accelerates-spending-goals/",
+      "date": "2026-09-03",
+      "sha256": "3c2fc852f79427ef35b3deddc9437bda824245a72129679b62a6d4c39e07eac2"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-patronage-is-open-to-everyone/",
+      "date": "2026-09-03",
+      "sha256": "3b87aebb6ae01b90a39fa66619ede80c53010d82788957a780273cd2a50ec839"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-hires-krzysztof-wilczynski/",
+      "date": "2026-09-03",
+      "sha256": "29283ccef805b1040d120cfee859deb3bc9861a7e09af28749504b3c3832cda8"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/quattro-crosses-200000-iso-downloads/",
+      "date": "2026-09-02",
+      "sha256": "3a9f1a1dd40fb17e2bb31d4be2d7ec90d3ff257546de167b9aa176f4b07d0d9d"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/omacom-foundation-reaches-13-million/",
+      "date": "2026-09-02",
+      "sha256": "3a12cfbd51f9ca9592e627ae71283514a1e10e2042bc793734d3ef65c4007dd6"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/1password-and-37signals-become-distinguished-corporate-patrons/",
+      "date": "2026-08-31",
+      "sha256": "cdd9d0d02d454436eb3fe1777e2956559d08b61d5e571e6d307ef19cbf14c5e2"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-welcomes-brian-armstrong-and-yunjie-dai/",
+      "date": "2026-08-31",
+      "sha256": "93dd434896a36d9a8bb1e9aed874b20c6648bd889c6fcfc6d34a694088d53bed"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/the-first-plugin-competition-winners/",
+      "date": "2026-08-28",
+      "sha256": "bb8a55c443ce1db9cfb98bf1085d1676fad18c7984298a592f4082ea685431df"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/100000-downloads-in-a-week/",
+      "date": "2026-08-28",
+      "sha256": "6b2d1064efef280d92fbd43b4d655f1c9c9384de7249decdfeabaf268cd5ff10"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/introducing-omarchy-air/",
+      "date": "2026-08-28",
+      "sha256": "920b2f1224c90895f2af4cd4ffa13db15d953053c1aaa12ddfba789bd0df4c2c"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/introducing-the-omarchy-rangers/",
+      "date": "2026-08-27",
+      "sha256": "d3bfb2522a2750b2fcbfbb6eba4679c109e0f33718996fa1d678ad207f961da4"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-to-be-premier-mise-sponsor/",
+      "date": "2026-08-25",
+      "sha256": "e145394e9e4178318ab3a7dcc6dd231ff3f5bc6c65456d9c4b8a075b9a685c37"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omarchy-meetups-around-the-world/",
+      "date": "2026-08-24",
+      "sha256": "b87fd61ddd47643255d7db437b4e1815cec280ca04083b305320df323effe5b2"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-to-be-premier-quickshell-sponsor/",
+      "date": "2026-08-24",
+      "sha256": "cfecaed36bcc14b4fd45a9e7dbb0101b822eba8ad1b65c0c9c35008313ae6b69"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-funding-hits-10m/",
+      "date": "2026-08-24",
+      "sha256": "36db80046a0fd24ee11ea4e21f5a4849a5a936bb59d24266a45ee1567cc72135"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-launches-with-8-million/",
+      "date": "2026-08-21",
+      "sha256": "079d0583b5af877bb3f0f26ca18f436021c8093f71251e6d72bdcc575507604e"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/omacom-foundation-to-be-exclusive-hyprland-sponsor/",
+      "date": "2026-08-21",
+      "sha256": "4350bd95cd01485b2c105af458dace2de9fe92a0d7783d376cbcdf004919884d"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/08/the-first-plugin-competition/",
+      "date": "2026-08-19",
+      "sha256": "5ef883f9d7ba78bf88c346f1440f1fae97a2587babf93337bd08bc26c42ed0f7"
+    },
+    {
+      "url": "https://omarchy.org/news/2026/09/the-omarchy-core-team/",
+      "date": "2026-08-19",
+      "sha256": "f8d5f03241c6ae1a9e18be7f77d665cd9c987e18af1b99a65536c07cbe2a2fe9"
+    }
+  ]
+}

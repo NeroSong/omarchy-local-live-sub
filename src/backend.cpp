@@ -182,14 +182,19 @@ void Backend::recognizeNext() {
             const auto time = QString("%1:%2").arg(job.endMs / 60000, 2, 10, QChar('0')).arg(job.endMs / 1000 % 60, 2, 10, QChar('0'));
             int index = provisionalRows.value(job.utterance, -1);
             if (!raw.isEmpty()) {
-                const auto text = terms.normalize(raw);
+                QStringList context;
+                // Use only nearby raw speech, avoiding feedback from earlier guessed corrections.
+                for (int i = std::max(0, int(rows.size()) - 3); i < rows.size(); ++i)
+                    if (i != index) context.append(rows[i].toMap().value("raw").toString().left(1000));
+                const auto corrected = terms.correct(raw, context.join("\n"));
+                const auto text = corrected.text;
                 if (index < 0) {
                     index = int(rows.size());
                     rows.append(QVariantMap{});
                     provisionalRows.insert(job.utterance, index);
                 }
                 rows[index] = QVariantMap{{"original", text}, {"raw", raw}, {"translation", ""},
-                    {"time", time}, {"meta", job.final ? "识别完成" : "正在说话"}};
+                    {"time", time}, {"meta", job.final ? "识别完成" : "正在说话"}, {"corrections", corrected.corrections}};
                 dirty = true; emit captionUpdated(index);
             }
             if (job.final && index >= 0) {

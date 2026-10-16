@@ -113,13 +113,29 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 新识别结果或译文更新会自动跟随最新内容；可在两次更新之间手动回看。空闲时左下角显示“清空”，清空前确认。状态圆点：绿色表示收音，黄色表示处理，红色表示异常；悬停查看详情。
 
-字幕导出到 `sessions/`，包含原始识别文字、术语修正后的文字和译文。恢复导出记录：
+字幕导出到 `sessions/`，包含原始识别文字、术语修正后的文字、译文和纠错记录。恢复导出记录：
 
 ```bash
 ./bin/run --restore-session sessions/session-example.json
 ```
 
-`glossary.json` 中维护 Omarchy、Linux、Rust 等术语与明确的别名，下次开始时加载。识别结果仅做保守的边界匹配替换，翻译提示保留标准技术名称；SenseVoice 不使用 Whisper 式提示词。
+### 术语自动纠错
+
+识别后、显示和翻译前执行本地规则纠错，不增加一次模型请求。原文预览和最终识别均应用相同规则；翻译读取修正后的原文，导出保留 `raw` 和 `corrections`，便于核对误改。
+
+`glossary.json` 下次开始时加载，支持以下字段：
+
+| 字段 | 行为 |
+| --- | --- |
+| `term` | 标准术语与拼写 |
+| `aliases` | 已确认的错词，按词边界直接修复，如 `O much → Omarchy`、`hyper land → Hyprland` |
+| `context_aliases` | 需要相关上下文才修复的近音词，包括中文音译 |
+| `context` | 本句或最近三段原始识别中的相关词，如 Linux、桌面、Wayland |
+| `fuzzy` | 可选，默认关闭；有相关上下文时允许长英文术语的一处增删、替换或相邻字母颠倒 |
+
+默认仅为 Omarchy、Hyprland 开启相似拼写修复。不会将 `much`、`rest` 等普通词单独改成术语；多条同等规则无法确定目标时跳过。规则同时匹配原始文字，不连续猜改；代码片段、链接、邮箱、路径和长命令选项保持原样。中英文相邻时仍可匹配术语，不要求汉字间有空格。
+
+例如 `O much 使用 Hyprlnd 作为 Linux 桌面` 会修正为 `Omarchy 使用 Hyprland 作为 Linux 桌面`。单独的 `Hyprlnd` 缺少上下文时保留，未知的近音错词也不会凭空猜测，可根据实际收音继续补充别名。SenseVoice 不使用 Whisper 式提示词；此机制在识别之后运行，翻译提示中仍保留标准名称。
 
 ## 数据与系统边界
 

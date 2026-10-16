@@ -1,20 +1,146 @@
 [
-  {"term":"Omarchy", "aliases":["O-marchy", "Ohmarchy"]},
-  {"term":"Hyprland", "aliases":["Hyperland", "hyper land", "hypr land"]},
-  {"term":"Linux", "aliases":[]},
-  {"term":"Rust", "aliases":[]},
-  {"term":"Wayland", "aliases":[]},
-  {"term":"XWayland", "aliases":["X Wayland"]},
-  {"term":"Arch Linux", "aliases":[]},
-  {"term":"systemd", "aliases":["system d"]},
-  {"term":"PipeWire", "aliases":["pipe wire"]},
-  {"term":"Neovim", "aliases":["neo vim"]},
-  {"term":"pacman", "aliases":[]},
-  {"term":"AUR", "aliases":[]},
-  {"term":"Cargo", "aliases":[]},
-  {"term":"rustc", "aliases":["rust c"]},
-  {"term":"Tokio", "aliases":[]},
-  {"term":"LLVM", "aliases":[]},
-  {"term":"GitHub", "aliases":["git hub"]},
-  {"term":"DHH", "aliases":[]}
+  {
+    "term": "Omarchy",
+    "aliases": [
+      "O-marchy",
+      "Ohmarchy",
+      "O much",
+      "O marky",
+      "Oh marky",
+      "Oh marchy",
+      "Omarky",
+      "Omarchi"
+    ],
+    "context_aliases": [
+      "欧马奇",
+      "欧玛奇",
+      "奥马奇",
+      "欧马基",
+      "奥马基",
+      "欧马克"
+    ],
+    "context": [
+      "Linux",
+      "Arch",
+      "Hyprland",
+      "发行版",
+      "桌面",
+      "配置",
+      "安装",
+      "系统",
+      "distro",
+      "desktop",
+      "install"
+    ],
+    "fuzzy": true
+  },
+  {
+    "term": "Hyprland",
+    "aliases": [
+      "Hyperland",
+      "hyper land",
+      "hypr land",
+      "hyper-land",
+      "Hypr land"
+    ],
+    "context_aliases": [
+      "海普兰",
+      "海普兰德",
+      "海珀兰德",
+      "海伯兰德",
+      "Hyberland",
+      "Hyper land"
+    ],
+    "context": [
+      "Omarchy",
+      "Linux",
+      "Arch",
+      "Wayland",
+      "窗口",
+      "平铺",
+      "桌面",
+      "配置",
+      "window",
+      "tiling",
+      "desktop",
+      "compositor"
+    ],
+    "fuzzy": true
+  },
+  {
+    "term": "Linux",
+    "aliases": []
+  },
+  {
+    "term": "Rust",
+    "aliases": []
+  },
+  {
+    "term": "Wayland",
+    "aliases": []
+  },
+  {
+    "term": "XWayland",
+    "aliases": [
+      "X Wayland"
+    ]
+  },
+  {
+    "term": "Arch Linux",
+    "aliases": []
+  },
+  {
+    "term": "systemd",
+    "aliases": [
+      "system d"
+    ]
+  },
+  {
+    "term": "PipeWire",
+    "aliases": [
+      "pipe wire"
+    ]
+  },
+  {
+    "term": "Neovim",
+    "aliases": [
+      "neo vim"
+    ]
+  },
+  {
+    "term": "pacman",
+    "aliases": []
+  },
+  {
+    "term": "AUR",
+    "aliases": []
+  },
+  {
+    "term": "Cargo",
+    "aliases": []
+  },
+  {
+    "term": "rustc",
+    "aliases": [
+      "rust c"
+    ]
+  },
+  {
+    "term": "Tokio",
+    "aliases": []
+  },
+  {
+    "term": "LLVM",
+    "aliases": []
+  },
+  {
+    "term": "GitHub",
+    "aliases": [
+      "git hub"
+    ]
+  },
+  {
+    "term": "DHH",
+    "aliases": []
+  }
 ]
