@@ -1,0 +1,9 @@
+QT += core testlib
+QT -= gui
+CONFIG += c++17 testcase console
+TARGET = live_sub_tests
+INCLUDEPATH += ../src
+SOURCES += live_sub_tests.cpp ../src/segmenter.cpp ../src/terms.cpp ../src/translation.cpp
+HEADERS += ../src/segmenter.h ../src/terms.h ../src/translation.h
+HEADERS += ../src/translationstream.h
+SOURCES += ../src/translationstream.cpp

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Omarchy Local Live Sub
+Comment=本地双语会议字幕
+Exec=live-sub
+Icon=live-sub
+Terminal=false
+Categories=AudioVideo;Utility;
+StartupWMClass=live-sub

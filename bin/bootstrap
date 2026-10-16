@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Build isolated inference tools and verify model downloads; no system installation."""
+import argparse
+import concurrent.futures
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+ROOT = Path(__file__).resolve().parent.parent
+
+def run(*args):
+    subprocess.run(args, check=True)
+
+def api(url):
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                return json.load(response)
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(2 + attempt)
+
+def download_ranges(url, temp, size):
+    prefix = temp.stat().st_size if temp.exists() else 0
+    chunk_size = 32 * 1024 * 1024
+    ranges = [(start, min(size - 1, start + chunk_size - 1)) for start in range(prefix, size, chunk_size)]
+    def fetch(bounds):
+        start, end = bounds
+        chunk = temp.with_name(temp.name + f".{start}-{end}")
+        length = end - start + 1
+        if chunk.exists() and chunk.stat().st_size == length:
+            return chunk
+        partial = chunk.with_name(chunk.name + ".tmp")
+        for attempt in range(10):
+            try:
+                offset = partial.stat().st_size if partial.exists() else 0
+                if offset > length:
+                    partial.unlink(); offset = 0
+                if offset < length:
+                    request = urllib.request.Request(url, headers={"Range": f"bytes={start + offset}-{end}"})
+                    with urllib.request.urlopen(request, timeout=120) as response, partial.open("ab") as stream:
+                        if response.status != 206 or response.headers.get("Content-Range") != f"bytes {start + offset}-{end}/{size}":
+                            raise RuntimeError("Server did not honor the requested byte range")
+                        shutil.copyfileobj(response, stream, length=1024 * 1024)
+                if partial.stat().st_size != length:
+                    raise OSError("Incomplete model byte range")
+                partial.replace(chunk)
+                print(f"  {temp.name}: range {start // 1048576}–{(end + 1) // 1048576} MiB complete", flush=True)
+                return chunk
+            except OSError:
+                if attempt == 9:
+                    raise
+                time.sleep(min(2 + attempt, 8))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        chunks = list(pool.map(fetch, ranges))
+    with temp.open("ab") as stream:
+        for chunk in chunks:
+            with chunk.open("rb") as source:
+                shutil.copyfileobj(source, stream, length=4 * 1024 * 1024)
+            stream.flush()
+            os.fsync(stream.fileno())
+            chunk.unlink()
+
+def model(repo, match, destination, lock):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.with_suffix(destination.suffix + ".lock").open("a") as guard:
+        fcntl.flock(guard, fcntl.LOCK_EX)
+        _model_locked(repo, match, destination, lock)
+
+def _model_locked(repo, match, destination, lock):
+    pinned = json.loads((ROOT / "dependencies.lock.json").read_text()).get(repo, {})
+    revision = pinned.get("revision")
+    endpoint = f"https://huggingface.co/api/models/{repo}"
+    if revision:
+        endpoint += f"/revision/{revision}"
+    info = api(endpoint + "?blobs=true")
+    files = [f for f in info["siblings"] if match(f["rfilename"])]
+    if len(files) != 1:
+        raise RuntimeError(f"Expected one model in {repo}, got {[f['rfilename'] for f in files]}")
+    entry = files[0]
+    expected = entry.get("lfs", {}).get("sha256")
+    if not expected:
+        raise RuntimeError(f"Missing published SHA256 for {entry['rfilename']}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    def checksum(path):
+        sha = hashlib.sha256()
+        with path.open("rb") as stream:
+            while block := stream.read(4 * 1024 * 1024):
+                sha.update(block)
+        return sha.hexdigest()
+    if not destination.exists() or checksum(destination) != expected:
+        revision = info["sha"]
+        url = f"https://huggingface.co/{repo}/resolve/{revision}/{entry['rfilename']}"
+        if destination.name == "translation.gguf":
+            url = os.environ.get("TRANSLATION_DOWNLOAD_URL", url)
+        temp = destination.with_suffix(destination.suffix + ".part")
+        print(f"Downloading {repo}/{entry['rfilename']} to {destination}", flush=True)
+        size = entry["lfs"]["size"]
+        if temp.exists() and temp.stat().st_size >= size and checksum(temp) != expected:
+            temp.unlink()
+        # Every range is bounded and final integrity is checked against the published hash.
+        download_ranges(url, temp, size)
+        if checksum(temp) != expected:
+            raise RuntimeError(f"SHA256 mismatch: {temp}; final model was not replaced")
+        temp.replace(destination)
+    lock[repo] = {"revision": info["sha"], "file": entry["rfilename"], "sha256": expected}
+    print(f"Verified {destination.name}", flush=True)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cpu", action="store_true", help="build CPU only, without Vulkan development headers")
+    parser.add_argument("--tools-only", action="store_true", help="skip model downloads")
+    parser.add_argument("--models-only", action="store_true", help="download and verify models without building tools")
+    parser.add_argument("--only-model", choices=["asr", "translation"], help="prepare only one selected model")
+    args = parser.parse_args()
+    required = ["git", "cmake", "make", "g++", "ffmpeg", "pactl", "qmake6"]
+    missing = [name for name in required if not shutil.which(name)]
+    if missing:
+        raise RuntimeError("Missing tools: " + ", ".join(missing))
+    runtime = ROOT / "runtime"
+    runtime.mkdir(exist_ok=True)
+    manifest = runtime / "manifest.json"
+    lock = json.loads(manifest.read_text()) if manifest.exists() else {}
+    lock["acceleration"] = "cpu" if args.cpu else "vulkan"
+    def save_manifest():
+        with (runtime / "manifest.lock").open("a") as guard:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+            current = json.loads(manifest.read_text()) if manifest.exists() else {}
+            current.update(lock)
+            temp = runtime / "manifest.json.tmp"
+            temp.write_text(json.dumps(current, indent=2) + "\n")
+            temp.replace(manifest)
+    if not args.tools_only:
+        if args.only_model != "translation":
+            local = Path.home() / ".local/share/voxtype/models/sensevoice-small-fp32"
+            bundled = ROOT / "models/sensevoice-small-fp32"
+            asr = Path(os.environ.get("SENSEVOICE_MODEL_DIR", bundled if bundled.is_dir() else local))
+            if not all((asr / name).is_file() for name in ("model.onnx", "tokens.txt")):
+                raise RuntimeError("SenseVoice Small FP32 model.onnx and tokens.txt are required. "
+                    "Set SENSEVOICE_MODEL_DIR to their directory; see README.md. Existing Voxtype configuration is never changed.")
+            lock["active_asr"] = {"engine": "sensevoice", "model": "small-fp32", "default_language": "auto"}
+            save_manifest()
+        repo = os.environ.get("TRANSLATION_REPO", "tencent/Hy-MT2-1.8B-GGUF")
+        quant = os.environ.get("TRANSLATION_QUANT", "Q8_0")
+        if args.only_model != "asr":
+            model(repo, lambda f: f.endswith("-" + quant + ".gguf"), ROOT / "models/translation.gguf", lock)
+            save_manifest()
+    if args.models_only:
+        return
+    venv = runtime / "sensevoice-venv"
+    if not (venv / "bin/python").is_file():
+        run(sys.executable, "-m", "venv", str(venv))
+    run(str(venv / "bin/python"), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt"))
+    pinned = json.loads((ROOT / "dependencies.lock.json").read_text())
+    def clone_source(name, url, path):
+        if path.exists():
+            return
+        run("git", "init", str(path))
+        run("git", "-C", str(path), "remote", "add", "origin", url)
+        run("git", "-C", str(path), "fetch", "--depth", "1", "origin", pinned[name])
+        run("git", "-C", str(path), "checkout", "--detach", "FETCH_HEAD")
+    vulkan_args = []
+    if not args.cpu and not Path("/usr/include/vulkan/vulkan.h").exists():
+        headers = runtime / "Vulkan-Headers"
+        if not headers.exists():
+            clone_source("Vulkan-Headers", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers)
+        lock["Vulkan-Headers"] = subprocess.check_output(["git", "-C", str(headers), "rev-parse", "HEAD"], text=True).strip()
+        vulkan_args = ["-DVulkan_INCLUDE_DIR=" + str(headers / "include")]
+    if not args.cpu:
+        spirv = runtime / "SPIRV-Headers"
+        if not spirv.exists():
+            clone_source("SPIRV-Headers", "https://github.com/KhronosGroup/SPIRV-Headers.git", spirv)
+        lock["SPIRV-Headers"] = subprocess.check_output(["git", "-C", str(spirv), "rev-parse", "HEAD"], text=True).strip()
+        prefix = runtime / "sdk"
+        run("cmake", "-S", str(spirv), "-B", str(spirv / "build"), "-DCMAKE_INSTALL_PREFIX=" + str(prefix))
+        run("cmake", "--install", str(spirv / "build"))
+        vulkan_args += ["-DCMAKE_PREFIX_PATH=" + str(prefix), "-DCMAKE_CXX_FLAGS=-I" + str(prefix / "include")]
+    for name, target in [("llama.cpp", "llama-server")]:
+        source = runtime / name
+        if not source.exists():
+            clone_source(name, f"https://github.com/ggml-org/{name}.git", source)
+        lock[name] = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        build = source / "build"
+        run("cmake", "-S", str(source), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release",
+            "-DGGML_VULKAN=" + ("OFF" if args.cpu else "ON"), "-DGGML_NATIVE=ON",
+            "-DWHISPER_BUILD_TESTS=OFF", "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_CURL=OFF", *vulkan_args)
+        run("cmake", "--build", str(build), "--target", target, "-j", os.environ.get("BUILD_JOBS", "4"))
+    save_manifest()
+    run(str(ROOT / "bin/build"))
+    print("Ready. Run bin/models-start in one terminal, then bin/run in another.")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        sys.exit(f"Setup failed: {error}")

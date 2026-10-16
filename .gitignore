@@ -1,0 +1,32 @@
+/build/
+/runtime/
+/models/
+/sessions/
+/pkgbuild/pkg/
+/pkgbuild/src/
+*.pkg.tar.*
+__pycache__/
+
+# Local assistant metadata and private settings
+/.agents/
+/.codex/
+/.aws/
+.env
+.env.*
+!.env.example
+*.log
+
+# Meeting audio and local captures
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.m4a
+*.mp4
+*.webm
+
+# Editor / Python caches
+.venv/
+*.py[cod]
+*.swp
+*~

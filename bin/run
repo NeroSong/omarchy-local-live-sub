@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export LIVE_SUB_ROOT="$ROOT"
+exec "$ROOT/build/live-sub" "$@"

@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Project-only loopback ASR adapter; never uses Voxtype state or audio capture."""
+from email.parser import BytesParser
+from email.policy import default
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import io
+import json
+import os
+from pathlib import Path
+import re
+import wave
+import numpy as np
+import sherpa_onnx
+
+bundled = Path(__file__).resolve().parent.parent / "models/sensevoice-small-fp32"
+model = Path(os.environ.get('SENSEVOICE_MODEL_DIR', str(bundled if bundled.is_dir() else Path.home() / '.local/share/voxtype/models/sensevoice-small-fp32')))
+recognizers = {}
+for language in ('zh', 'en', 'auto'):
+    recognizers[language] = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+        model=str(model / 'model.onnx'), tokens=str(model / 'tokens.txt'),
+        num_threads=6, language=language, use_itn=True, provider='cpu')
+
+def decode(samples, language):
+    recognizer = recognizers[language]
+    stream = recognizer.create_stream()
+    stream.accept_waveform(16000, samples)
+    recognizer.decode_stream(stream)
+    return stream.result
+
+class Handler(BaseHTTPRequestHandler):
+    def respond(self, code, data):
+        body = json.dumps(data, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self.respond(200, {'engine': 'sensevoice', 'model': str(model), 'languages': ['zh', 'en']})
+
+    def do_POST(self):
+        if self.path != '/inference':
+            return self.respond(404, {'error': 'Unknown endpoint'})
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 2 * 1024 * 1024:
+                raise ValueError('Invalid audio size')
+            content_type = self.headers.get('Content-Type', '')
+            message = BytesParser(policy=default).parsebytes(
+                ('Content-Type: ' + content_type + '\r\nMIME-Version: 1.0\r\n\r\n').encode() + self.rfile.read(length))
+            fields = {part.get_param('name', header='content-disposition'): part.get_payload(decode=True)
+                      for part in message.iter_parts()}
+            language = fields.get('language', b'zh').decode()
+            if language not in recognizers:
+                raise ValueError('Only zh, en and auto are supported')
+            with wave.open(io.BytesIO(fields['file']), 'rb') as audio:
+                if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, 16000):
+                    raise ValueError('Expected mono 16kHz PCM16 WAV')
+                samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype='<i2').astype(np.float32) / 32768
+            result = decode(samples, language)
+            detected = getattr(result, 'lang', '').replace('<|', '').replace('|>', '')
+            # Auto mode must not pass Korean/Japanese output into a Chinese-English discussion.
+            if language == 'auto' and (detected in ('ja', 'ko', 'yue') or re.search('[\u3040-\u30ff\uac00-\ud7af]', result.text)):
+                result = decode(samples, 'zh')
+                detected = 'zh'
+            text = re.sub(r'<\|[^|]*\|>', '', result.text).strip()
+            self.respond(200, {'text': text, 'language': detected or language})
+        except (ValueError, KeyError, wave.Error) as error:
+            self.respond(400, {'error': str(error)})
+        except Exception as error:
+            self.respond(500, {'error': str(error)})
+
+print('SenseVoice Small FP32 ready on 127.0.0.1:8178 (CPU, 6 threads)', flush=True)
+HTTPServer(('127.0.0.1', 8178), Handler).serve_forever()

@@ -1,0 +1,20 @@
+[
+  {"term":"Omarchy", "aliases":["O-marchy", "Ohmarchy"]},
+  {"term":"Hyprland", "aliases":["Hyperland", "hyper land", "hypr land"]},
+  {"term":"Linux", "aliases":[]},
+  {"term":"Rust", "aliases":[]},
+  {"term":"Wayland", "aliases":[]},
+  {"term":"XWayland", "aliases":["X Wayland"]},
+  {"term":"Arch Linux", "aliases":[]},
+  {"term":"systemd", "aliases":["system d"]},
+  {"term":"PipeWire", "aliases":["pipe wire"]},
+  {"term":"Neovim", "aliases":["neo vim"]},
+  {"term":"pacman", "aliases":[]},
+  {"term":"AUR", "aliases":[]},
+  {"term":"Cargo", "aliases":[]},
+  {"term":"rustc", "aliases":["rust c"]},
+  {"term":"Tokio", "aliases":[]},
+  {"term":"LLVM", "aliases":[]},
+  {"term":"GitHub", "aliases":["git hub"]},
+  {"term":"DHH", "aliases":[]}
+]

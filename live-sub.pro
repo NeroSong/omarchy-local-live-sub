@@ -1,0 +1,9 @@
+QT += core gui qml quick quickcontrols2 network
+CONFIG += c++17 release
+TARGET = live-sub
+TEMPLATE = app
+HEADERS += src/backend.h src/segmenter.h src/terms.h src/theme.h src/translation.h
+SOURCES += src/main.cpp src/backend.cpp src/segmenter.cpp src/terms.cpp src/theme.cpp src/translation.cpp
+HEADERS += src/translationstream.h
+SOURCES += src/translationstream.cpp
+RESOURCES += src/resources.qrc

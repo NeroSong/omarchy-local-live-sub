@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Start this project's model services and open its caption window."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import urllib.request
+
+root = Path(__file__).resolve().parent.parent
+logs = root / "runtime/logs"
+logs.mkdir(parents=True, exist_ok=True)
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+def ready():
+    try:
+        for url in ["http://127.0.0.1:8178/", "http://127.0.0.1:8179/health"]:
+            with opener.open(url, timeout=1) as response:
+                if response.status != 200:
+                    return False
+        return True
+    except OSError:
+        return False
+
+def owned():
+    try:
+        info = json.loads((root / "runtime/models-process.json").read_text())
+        process = Path(f"/proc/{info['pid']}")
+        ticks_match = process.joinpath("stat").read_text().split()[21] == info["start_ticks"]
+        cwd = process.joinpath("cwd").resolve()
+        arguments = process.joinpath("cmdline").read_bytes().split(b'\0')
+        script_match = any((cwd / os.fsdecode(arg)).resolve() == root / "bin/models-start" for arg in arguments if arg)
+        return ticks_match and script_match
+    except (OSError, ValueError, KeyError):
+        return False
+
+if "--status" in sys.argv:
+    available, tracked = ready(), owned()
+    print(f"Models ready: {available}; owned by this project: {tracked}")
+    sys.exit(0 if available and tracked else 1)
+
+try:
+    supervisor = None
+    if not ready():
+        if not owned():
+            with (logs / "supervisor.log").open("w") as output:
+                supervisor = subprocess.Popen([str(root / "bin/models-start")], cwd=root, stdin=subprocess.DEVNULL,
+                    stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        print("Loading local models…", flush=True)
+        deadline = time.monotonic() + 200
+        while not ready():
+            if (supervisor is not None and supervisor.poll() is not None) or (supervisor is None and not owned()) or time.monotonic() >= deadline:
+                sys.exit(f"Models did not start. See {logs / 'supervisor.log'}")
+            time.sleep(0.5)
+    elif not owned():
+        sys.exit("Ports are served by an untracked process. No existing service was changed.")
+    with (logs / "ui.log").open("w") as output:
+        window = subprocess.Popen([str(root / "bin/run")], cwd=root, stdin=subprocess.DEVNULL,
+            stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+    time.sleep(1)
+    if window.poll() is not None:
+        sys.exit(f"Window did not open. See {logs / 'ui.log'}")
+    print(f"Caption window opened (PID {window.pid}). Click 开始字幕 to acquire the microphone.")
+    print("Model services remain running after closing the window. Use bin/models-stop to release them.")
+except OSError as error:
+    sys.exit(str(error))
