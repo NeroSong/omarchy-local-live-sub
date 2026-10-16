@@ -16,11 +16,18 @@ ROOT = Path(__file__).resolve().parent.parent
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", action="store_true", help="disable GPU explicitly")
+    parser.add_argument("--decoder", choices=["greedy", "hotword_ctc"], help="override asr-config.json; greedy restores the original sherpa-onnx path")
     args = parser.parse_args()
+    asr_config = json.loads((ROOT / "asr-config.json").read_text())
+    decoder = args.decoder or os.environ.get("SENSEVOICE_DECODER", asr_config["decoder"])
+    if decoder not in ("greedy", "hotword_ctc"):
+        raise ValueError("Unsupported decoder: " + decoder)
+    child_env = os.environ.copy()
+    child_env["SENSEVOICE_DECODER"] = decoder
     manifest = ROOT / "runtime/manifest.json"
     config = json.loads(manifest.read_text()) if manifest.exists() else {}
     cpu = args.cpu or config.get("acceleration") == "cpu"
-    asr_python = ROOT / "runtime/sensevoice-venv/bin/python"
+    asr_python = ROOT / ("runtime/hotword-venv/bin/python" if decoder == "hotword_ctc" else "runtime/sensevoice-venv/bin/python")
     asr_server = ROOT / "bin/sensevoice-server"
     llama = ROOT / "runtime/llama.cpp/build/bin/llama-server"
     bundled = ROOT / "models/sensevoice-small-fp32"
@@ -59,9 +66,9 @@ def main():
         for name, command in zip(["asr", "translation"], commands):
             log = (ROOT / f"runtime/logs/{name}.log").open("w")
             logs.append(log)
-            children.append(subprocess.Popen(command, stdout=log, stderr=log))
+            children.append(subprocess.Popen(command, stdout=log, stderr=log, env=child_env))
         pidfile.write_text(json.dumps(identity) + "\n")
-        print(f"Loading models (SenseVoice CPU + translation {'CPU' if cpu else 'Vulkan'}). Logs: {ROOT / 'runtime/logs'}", flush=True)
+        print(f"Loading models (SenseVoice {decoder} CPU + translation {'CPU' if cpu else 'Vulkan'}). Logs: {ROOT / 'runtime/logs'}", flush=True)
         deadline = time.monotonic() + 180
         ready = False
         while not stopped:

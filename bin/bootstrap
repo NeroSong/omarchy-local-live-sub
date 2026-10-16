@@ -155,10 +155,11 @@ def main():
             save_manifest()
     if args.models_only:
         return
-    venv = runtime / "sensevoice-venv"
-    if not (venv / "bin/python").is_file():
-        run(sys.executable, "-m", "venv", str(venv))
-    run(str(venv / "bin/python"), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt"))
+    for environment, requirements in [("sensevoice-venv", "requirements.txt"), ("hotword-venv", "requirements-hotwords.txt")]:
+        venv = runtime / environment
+        if not (venv / "bin/python").is_file():
+            run(sys.executable, "-m", "venv", str(venv))
+        run(str(venv / "bin/python"), "-m", "pip", "install", "-r", str(ROOT / requirements))
     pinned = json.loads((ROOT / "dependencies.lock.json").read_text())
     def clone_source(name, url, path):
         if path.exists():

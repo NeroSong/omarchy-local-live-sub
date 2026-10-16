@@ -10,22 +10,33 @@ from pathlib import Path
 import re
 import wave
 import numpy as np
-import sherpa_onnx
 
 bundled = Path(__file__).resolve().parent.parent / "models/sensevoice-small-fp32"
 model = Path(os.environ.get('SENSEVOICE_MODEL_DIR', str(bundled if bundled.is_dir() else Path.home() / '.local/share/voxtype/models/sensevoice-small-fp32')))
-recognizers = {}
-for language in ('zh', 'en', 'auto'):
-    recognizers[language] = sherpa_onnx.OfflineRecognizer.from_sense_voice(
-        model=str(model / 'model.onnx'), tokens=str(model / 'tokens.txt'),
-        num_threads=6, language=language, use_itn=True, provider='cpu')
-
-def decode(samples, language):
-    recognizer = recognizers[language]
-    stream = recognizer.create_stream()
-    stream.accept_waveform(16000, samples)
-    recognizer.decode_stream(stream)
-    return stream.result
+root = Path(__file__).resolve().parent.parent
+config = json.loads((root / 'asr-config.json').read_text())
+mode = os.environ.get('SENSEVOICE_DECODER', config['decoder'])
+if mode == 'hotword_ctc':
+    from hotword_decoder import Recognizer
+    recognizer = Recognizer(model, config)
+    def decode(samples, language):
+        return recognizer.decode(samples, language)
+elif mode == 'greedy':
+    import sherpa_onnx
+    recognizers = {}
+    for language in ('zh', 'en', 'auto'):
+        recognizers[language] = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+            model=str(model / 'model.onnx'), tokens=str(model / 'tokens.txt'),
+            num_threads=6, language=language, use_itn=True, provider='cpu')
+    def decode(samples, language):
+        engine = recognizers[language]
+        stream = engine.create_stream()
+        stream.accept_waveform(16000, samples)
+        engine.decode_stream(stream)
+        result = stream.result
+        return {'text': result.text, 'language': getattr(result, 'lang', '').replace('<|', '').replace('|>', ''), 'decoder': 'greedy'}
+else:
+    raise ValueError('Unsupported SENSEVOICE_DECODER: ' + mode)
 
 class Handler(BaseHTTPRequestHandler):
     def respond(self, code, data):
@@ -37,7 +48,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        self.respond(200, {'engine': 'sensevoice', 'model': str(model), 'languages': ['zh', 'en']})
+        self.respond(200, {'engine': 'sensevoice', 'model': str(model), 'languages': ['zh', 'en'], 'decoder': mode,
+            'hotwords': [entry['term'] for entry in config['hotwords']] if mode == 'hotword_ctc' else []})
 
     def do_POST(self):
         if self.path != '/inference':
@@ -51,25 +63,27 @@ class Handler(BaseHTTPRequestHandler):
                 ('Content-Type: ' + content_type + '\r\nMIME-Version: 1.0\r\n\r\n').encode() + self.rfile.read(length))
             fields = {part.get_param('name', header='content-disposition'): part.get_payload(decode=True)
                       for part in message.iter_parts()}
-            language = fields.get('language', b'zh').decode()
-            if language not in recognizers:
+            language = fields.get('language', b'auto').decode()
+            if language not in ('auto', 'zh', 'en'):
                 raise ValueError('Only zh, en and auto are supported')
             with wave.open(io.BytesIO(fields['file']), 'rb') as audio:
                 if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, 16000):
                     raise ValueError('Expected mono 16kHz PCM16 WAV')
                 samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype='<i2').astype(np.float32) / 32768
             result = decode(samples, language)
-            detected = getattr(result, 'lang', '').replace('<|', '').replace('|>', '')
+            detected = result['language']
             # Auto mode must not pass Korean/Japanese output into a Chinese-English discussion.
-            if language == 'auto' and (detected in ('ja', 'ko', 'yue') or re.search('[\u3040-\u30ff\uac00-\ud7af]', result.text)):
+            if language == 'auto' and (detected in ('ja', 'ko', 'yue') or re.search('[\u3040-\u30ff\uac00-\ud7af]', result['text'])):
                 result = decode(samples, 'zh')
                 detected = 'zh'
-            text = re.sub(r'<\|[^|]*\|>', '', result.text).strip()
-            self.respond(200, {'text': text, 'language': detected or language})
+            result['text'] = re.sub(r'<\|[^|]*\|>', '', result['text']).strip()
+            result['language'] = detected or language
+            self.respond(200, result)
         except (ValueError, KeyError, wave.Error) as error:
             self.respond(400, {'error': str(error)})
         except Exception as error:
             self.respond(500, {'error': str(error)})
 
-print('SenseVoice Small FP32 ready on 127.0.0.1:8178 (CPU, 6 threads)', flush=True)
-HTTPServer(('127.0.0.1', 8178), Handler).serve_forever()
+port = int(os.environ.get('LIVE_SUB_ASR_PORT', '8178'))
+print(f'SenseVoice Small FP32 ready on 127.0.0.1:{port} (CPU, decoder={mode})', flush=True)
+HTTPServer(('127.0.0.1', port), Handler).serve_forever()

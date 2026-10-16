@@ -121,15 +121,15 @@ private slots:
         QCOMPARE(corrected.corrections.first().toMap().value("from").toString(), QString("O much"));
         QCOMPARE(corrected.corrections.first().toMap().value("to").toString(), QString("Omarchy"));
         QCOMPARE(terms.correct("欧马奇的桌面使用海普兰德。").text, QString("Omarchy的桌面使用Hyprland。"));
-        QCOMPARE(terms.correct("Hyprlnd 和欧马奇").text, QString("Hyprlnd 和欧马奇"));
+        QCOMPARE(terms.correct("Hyprlnd 和欧马奇").text, QString("Hyprlnd 和Omarchy"));
         QCOMPARE(terms.correct("Hyprlnad", "Wayland compositor").text, QString("Hyprland"));
     }
     void glossaryPreservesCodePathsAndOrdinaryWords() {
         Terms terms; QString error;
         QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
-        const QString raw = "so much, too much, rest, trust, anarchy, hyper landscape; "
-            "`O much` https://example.com/Hyprlnd /tmp/Hyprlnd --Hyprlnd "
-            "```\nO much\n```";
+        const QString raw = "rest, trust, hyper landscape; "
+            "`hyper land` https://example.com/Hyprlnd /tmp/Hyprlnd --Hyprlnd "
+            "```\nhyper land\n```";
         QCOMPARE(terms.correct(raw, "Linux desktop").text, raw);
         const auto corrected = terms.correct("配置Hyprland，O   much 和 Omarchyy。", "Linux");
         QCOMPARE(corrected.text, QString("配置Hyprland，Omarchy 和 Omarchy。"));
@@ -142,6 +142,22 @@ private slots:
                        {"term":"abcxefg","aliases":[],"context":["Linux"],"fuzzy":true}])"); file.close();
         Terms terms; QString error; QVERIFY(terms.load(file.fileName(), error));
         QCOMPARE(terms.correct("abcqefg", "Linux").text, QString("abcqefg"));
+    }
+    void omarchyForceModeNeedsNoContextAndPreservesFollowingWords() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        QCOMPARE(terms.correct("Oh, matching is great. Oh, Martin is a great sister. Oh much is great.").text,
+            QString("Omarchy is great. Omarchy is a great sister. Omarchy is great."));
+        QCOMPARE(terms.correct("O mar key is great. Oh my key is great.").text,
+            QString("Omarchy is great. Omarchy is great."));
+        QCOMPARE(terms.correct("欧玛琪很好，哦马基也是。").text, QString("Omarchy很好，Omarchy也是。"));
+        QCOMPARE(terms.correct("`O much` /tmp/Ohmarchy monarchy anarchy").text,
+            QString("`Omarchy` /tmp/Omarchy Omarchy Omarchy"));
+        QCOMPARE(terms.correct("Omarchy is great.").text, QString("Omarchy is great."));
+        QVERIFY(!terms.correct("Oh, Martin").corrections.isEmpty());
+        QCOMPARE(terms.correct("No, match is great. I love how much. As the system how much is great. Oh mary. Or or ma.").text,
+            QString("Omarchy is great. I love Omarchy. As the system Omarchy is great. Omarchy. Omarchy."));
+        QCOMPARE(terms.correct("so much and too much").text, QString("Omarchy and Omarchy"));
     }
 };
 QTEST_GUILESS_MAIN(LiveSubTests)

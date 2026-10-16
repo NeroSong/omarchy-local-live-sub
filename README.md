@@ -6,7 +6,7 @@ Local real-time subtitles and translation. An Omarchy app for Chinese–English 
 
 ## 当前方案
 
-- **语音识别：SenseVoice Small FP32**，sherpa-onnx 常驻 CPU，6 线程。
+- **语音识别：SenseVoice Small FP32**，当前试用 ONNX Runtime + 热词 CTC 候选搜索，CPU 6 线程；原 sherpa-onnx 模式保留可回退。
 - **翻译：Hy-MT2-1.8B Q8_0**，llama.cpp 常驻服务，默认 Vulkan 加速。
 - **界面：C++ / Qt Quick**，跟随 Omarchy 的强调色。
 - 默认自动识别中英文，使用识别结果的语言标签选择翻译方向；标签缺失时参考原文文字。也可固定英语或中文。
@@ -53,9 +53,9 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 ./bin/bootstrap
 ```
 
-该脚本会检查已有 SenseVoice 模型，在 `runtime/sensevoice-venv/` 安装固定版本的 Python 依赖，下载并校验翻译模型，编译 llama.cpp 和应用。它不安装系统包，不再下载或编译 Whisper。
+该脚本会检查已有 SenseVoice 模型，在独立的 `runtime/sensevoice-venv/` 和 `runtime/hotword-venv/` 安装固定版本的 Python 依赖，下载并校验翻译模型，编译 llama.cpp 和应用。它不安装系统包，不再下载或编译 Whisper。
 
-- `requirements.txt` 固定 Python 依赖版本。
+- `requirements.txt` / `requirements-hotwords.txt` 分别固定原识别模式和热词识别模式的依赖版本。
 - `dependencies.lock.json` 记录首次准备使用的 llama.cpp / SDK 提交，以及翻译模型版本与散列。
 - 新源码检出使用锁定提交；已有 `runtime/` 源码目录保留，不自动更新。
 - 翻译模型下载使用发布方 SHA256 校验，通过后才替换最终文件。
@@ -96,6 +96,30 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 停止脚本只操作身份匹配的项目服务进程。CPU 备用模式可使用 `./bin/models-start --cpu`。
 
+## 热词解码实验模式
+
+当前 `asr-config.json` 默认 `hotword_ctc`：只读使用同一份 SenseVoice FP32 ONNX 模型，读取模型内的 LFR / CMVN / 语言信息，使用 kaldi-native-fbank 提取特征，通过 ONNX Runtime 获取 CTC 概率，再进行热词增强的候选搜索。没有换用 PyTorch 模型，没有训练或修改已有模型文件。
+
+首批十词：Omarchy、Hyprland、Quickshell、Omacom、Quattro、Linux、Arch、mise、Neovim、Rust。初始分值分别按高 / 中 / 低设为 6 / 3 / 1，尚未经过实际录音调优；这些值是解码加分，不是出现概率。配置修改后需要重启模型服务。
+
+搜索默认保留 4 个候选，每帧考虑 8 个高概率 token 和可延续热词的 token。按完整单词边界加分，失败的半截热词在结束时没有奖励；超过声学差距限制的候选会被剪枝，避免纯靠热词硬造文字。它能提高候选优先级，不能保证所有近音都输出指定名称，也可能增加耗时或误识别，效果由用户试用确认。
+
+为了比较和排查，导出字幕额外保留 `asr_decoder`、同一次模型推理的普通贪心结果 `asr_greedy`、`asr_inference_ms` 和 `asr_decode_ms`。无需额外一次推理，音频仍不落盘。`raw` 是热词解码结果，`original` 是经过术语规则兜底的显示文字。
+
+切回之前的 sherpa-onnx 识别路径：先结束窗口收音，等待字幕处理结束并导出，再执行：
+
+```bash
+./bin/models-stop
+# 等待原终端中的模型服务退出，再启动
+./bin/models-start --decoder greedy
+```
+
+切回热词模式使用 `./bin/models-start --decoder hotword_ctc`。也可设置 `SENSEVOICE_DECODER=greedy` 后运行 `./bin/start`，但已有服务不会被该命令替换；必须先停止已有项目服务。
+
+两种模式的识别服务健康信息均返回实际 `decoder`；热词模式还返回当前词表。服务无法启动或推理失败时明确报错，不静默切回普通识别。
+
+技术接口依据：[SenseVoice 模型元数据](https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/csrc/offline-sense-voice-model.cc)、[识别特征与解码处理](https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/csrc/offline-recognizer-sense-voice-impl.h)。热词搜索由本项目实现，并非 sherpa-onnx 官方 SenseVoice 原生热词接口。
+
 ## 使用
 
 在设置面板中选择全场麦克风、语言和收音门限，然后开始字幕。停止收音后会完成排队任务；处理失败或积压过多时会停止采集并保留已有文字。
@@ -135,6 +159,8 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 默认仅为 Omarchy、Hyprland 开启相似拼写修复。不会将 `much`、`rest` 等普通词单独改成术语；多条同等规则无法确定目标时跳过。规则同时匹配原始文字，不连续猜改；代码片段、链接、邮箱、路径和长命令选项保持原样。中英文相邻时仍可匹配术语，不要求汉字间有空格。
 
+**Omarchy 强制模式（当前启用）**：按用户指定优先保证名称统一，允许误改。该条目的 `force_phonetic: true` 会绕过上下文要求和普通代码保护，强制处理已知别名、`force_patterns` 中的宽松中英文近音模式，以及合并最多三个英文词后的粗略发音键匹配。`Oh much`、`Oh, matching`、`Oh, Martin`、`how much`、`No, match`、`Oh mary`、`Or or ma`、`O mar key` 和中文音译会统一为 Omarchy；`so much`、`too much` 也会强制替换，不再保留这些普通短语；monarchy、anarchy 也已作为强制别名纳入。发音键使用字母归并和宽松编辑距离，并不是音频级发音判断；未覆盖的语言或完全不同的识别文字仍可能漏掉。强制规则优先级高于其他术语规则；保留 `raw` 与纠错记录。将该开关设为 false 可恢复保守行为。以上普通词和代码保护说明只适用于未启用强制模式的词条。
+
 例如 `O much 使用 Hyprlnd 作为 Linux 桌面` 会修正为 `Omarchy 使用 Hyprland 作为 Linux 桌面`。单独的 `Hyprlnd` 缺少上下文时保留，未知的近音错词也不会凭空猜测，可根据实际收音继续补充别名。SenseVoice 不使用 Whisper 式提示词；此机制在识别之后运行，翻译提示中仍保留标准名称。
 
 ## 数据与系统边界
@@ -152,7 +178,8 @@ src/                    C++ 后端、Qt Quick 界面、图标
 bin/                    构建、模型准备、启动和停止脚本
 pkgbuild/               可选 Arch 包和桌面入口
 tests/                  已有 Qt 单元测试
-requirements.txt        Python 推理依赖版本
+requirements*.txt       两种模式的 Python 推理依赖版本
+asr-config.json         解码模式、热词和搜索参数
 dependencies.lock.json  上游源码与翻译模型版本
 glossary.json           专业术语表
 ```
@@ -166,7 +193,7 @@ glossary.json           专业术语表
 ./bin/test
 ```
 
-已有测试覆盖切段、PCM / WAV、术语、翻译方向、输出截断及 SSE 碎片解析。当前会议环境的使用效果由用户试用确认；自动化检查不代表全场会议验收。
+已有测试覆盖切段、PCM / WAV、术语、翻译方向、输出截断及 SSE 碎片解析。热词解码器另有无音频的回归用例：`runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py`。当前会议环境的使用效果由用户试用确认；自动化检查不代表全场会议验收。
 
 `./bin/benchmark speech-16k.wav --language auto` 可选测量模型处理耗时，它使用固定 6 秒片段，不能代表界面断句策略或采集端到端延迟；报告包含字幕文字，请勿提交。
 

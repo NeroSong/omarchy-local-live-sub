@@ -32,7 +32,36 @@
       "desktop",
       "install"
     ],
-    "fuzzy": true
+    "fuzzy": true,
+    "force_phonetic": true,
+    "force_patterns": [
+      "(?<![\\p{Latin}\\p{N}_])(?:(?:how|no|our|or|owe|oh|o)[\\s,，、·-]*){1,3}(?:much|match(?:ing)?|march(?:y|ie|i|ing)?|mark(?:y|ie|i|ey|et|ing)?|mart(?:in|y|ie)|mar(?:y|ie)|ma|monarch(?:y)?|monkey)(?![\\p{Latin}\\p{N}_])",
+      "(?<![\\p{Latin}\\p{N}_])(?:o|oh)[\\s,，、·-]+m(?:y|i)[\\s,，、·-]+k(?:ey|i|ee)(?![\\p{Latin}\\p{N}_])",
+      "(?:欧姆|欧|鸥|哦|噢|喔|奥|傲|澳|阿|偶|呕)(?:玛|马|码|妈|麻|蚂|骂|么|麦)(?:尔|儿)?(?:克奇|奇|琪|祺|琦|齐|棋|基|吉|姬|记|机|其|凯|克)"
+    ],
+    "force_aliases": [
+      "Oh much",
+      "Oh matching",
+      "Oh Martin",
+      "O matching",
+      "O Martin",
+      "O mar key",
+      "Oh mar key",
+      "Omar key",
+      "Oh monarchy",
+      "O monarchy",
+      "monarchy",
+      "anarchy",
+      "how much",
+      "No match",
+      "Oh mary",
+      "O mary",
+      "Or or ma",
+      "Or ma",
+      "Our ma",
+      "so much",
+      "too much"
+    ]
   },
   {
     "term": "Hyprland",

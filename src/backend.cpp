@@ -194,7 +194,11 @@ void Backend::recognizeNext() {
                     provisionalRows.insert(job.utterance, index);
                 }
                 rows[index] = QVariantMap{{"original", text}, {"raw", raw}, {"translation", ""},
-                    {"time", time}, {"meta", job.final ? "识别完成" : "正在说话"}, {"corrections", corrected.corrections}};
+                    {"time", time}, {"meta", job.final ? "识别完成" : "正在说话"}, {"corrections", corrected.corrections},
+                    {"asr_decoder", doc.object().value("decoder").toString()},
+                    {"asr_greedy", doc.object().value("greedy_text").toString()},
+                    {"asr_inference_ms", doc.object().value("inference_ms").toDouble()},
+                    {"asr_decode_ms", doc.object().value("decode_ms").toDouble()}};
                 dirty = true; emit captionUpdated(index);
             }
             if (job.final && index >= 0) {

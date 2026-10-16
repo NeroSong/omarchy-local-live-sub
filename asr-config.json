@@ -1,0 +1,49 @@
+{
+  "decoder": "hotword_ctc",
+  "beam_size": 4,
+  "acoustic_top_k": 8,
+  "max_token_log_gap": 10.0,
+  "threads": 6,
+  "hotwords": [
+    {
+      "term": "Omarchy",
+      "score": 6.0
+    },
+    {
+      "term": "Hyprland",
+      "score": 6.0
+    },
+    {
+      "term": "Quickshell",
+      "score": 3.0
+    },
+    {
+      "term": "Omacom",
+      "score": 3.0
+    },
+    {
+      "term": "Quattro",
+      "score": 3.0
+    },
+    {
+      "term": "Linux",
+      "score": 1.0
+    },
+    {
+      "term": "Arch",
+      "score": 1.0
+    },
+    {
+      "term": "mise",
+      "score": 1.0
+    },
+    {
+      "term": "Neovim",
+      "score": 3.0
+    },
+    {
+      "term": "Rust",
+      "score": 1.0
+    }
+  ]
+}
