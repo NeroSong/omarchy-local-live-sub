@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Read-only installation checks; --json is intended for an installing AI."""
+import argparse
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import urllib.request
+
+from model_assets import ASR_REPO, ASR_FILES, asr_directory, checksum
+
+ROOT = Path(__file__).resolve().parent.parent
+TOOLS = ('git', 'cmake', 'make', 'g++', 'pkg-config', 'ffmpeg', 'pactl', 'qmake6')
+BASE_PACKAGES = 'base-devel git cmake python python-pip qt6-base qt6-declarative qt6-wayland qt6-svg ffmpeg libpulse libnotify'
+INTEL_PACKAGES = 'mesa vulkan-intel vulkan-icd-loader vulkan-tools shaderc'
+
+
+def inspect(preflight=False, cpu=False, services=False, verify_models=False):
+    checks = []
+    def add(name, status, detail):
+        checks.append({'name': name, 'status': status, 'detail': detail})
+    def run(arguments, timeout=20):
+        return subprocess.run(arguments, capture_output=True, text=True, timeout=timeout)
+    add('platform', 'ok' if sys.platform == 'linux' and platform.machine() == 'x86_64' else 'error',
+        f'{sys.platform} {platform.machine()}; the handoff target is x86_64 Omarchy / Arch Linux')
+    add('python', 'ok' if (3, 12) <= sys.version_info[:2] <= (3, 14) else 'error', platform.python_version() + '; Python 3.12-3.14 required')
+    missing = [tool for tool in TOOLS if not shutil.which(tool)]
+    add('build_tools', 'error' if missing else 'ok', 'Missing: ' + ', '.join(missing) if missing else 'Build and audio tools found')
+    add('dependency_command', 'info', 'sudo pacman -S --needed ' + BASE_PACKAGES + ('' if cpu else ' ' + INTEL_PACKAGES))
+    if not cpu:
+        add('shader_compiler', 'ok' if shutil.which('glslc') else 'error', 'glslc is supplied by the shaderc package')
+        if shutil.which('vulkaninfo'):
+            try:
+                gpu = run(['vulkaninfo', '--summary'])
+                names = [line.strip() for line in gpu.stdout.splitlines() if 'deviceName' in line or 'deviceType' in line]
+                software = not any('PHYSICAL_DEVICE_TYPE' in line and 'CPU' not in line for line in names)
+                add('vulkan', 'ok' if gpu.returncode == 0 and names and not software else 'error',
+                    '; '.join(names) or 'No Vulkan hardware device available; check the Intel driver or explicitly use --cpu')
+            except (OSError, subprocess.TimeoutExpired) as error:
+                add('vulkan', 'error', str(error))
+        else:
+            engine = ROOT / 'runtime/llama.cpp/build/bin/llama-server'
+            if engine.is_file():
+                try:
+                    gpu = run([str(engine), '--list-devices'])
+                    names = [line.strip() for line in gpu.stdout.splitlines() if re.search(r'Vulkan\d+:', line)]
+                    hardware = any(not re.search(r'llvmpipe|lavapipe|software', name, re.I) for name in names)
+                    add('vulkan', 'ok' if gpu.returncode == 0 and hardware else 'error',
+                        '; '.join(names) or 'No Vulkan hardware device reported by llama-server; check drivers or use --cpu')
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    add('vulkan', 'error', str(error))
+            else:
+                add('vulkan', 'warning', 'vulkaninfo is missing; install vulkan-tools to verify the GPU before building')
+    free = shutil.disk_usage(ROOT).free // (1024 ** 3)
+    add('free_space', 'warning' if free < (12 if preflight else 2) else 'ok', f'{free} GiB available; 20 GiB recommended before setup')
+    if preflight:
+        return checks
+    config = Path(os.environ.get('LIVE_SUB_CONFIG_DIR', str(ROOT))).expanduser().resolve()
+    for name, expected_type in [('glossary.json', list), ('asr-config.json', dict)]:
+        try:
+            value = json.loads((config / name).read_text())
+            if not isinstance(value, expected_type):
+                raise ValueError('Unexpected top-level JSON type')
+            add(name, 'ok', str(config / name))
+        except (OSError, ValueError) as error:
+            add(name, 'error', str(error))
+    try:
+        decoder = json.loads((config / 'asr-config.json').read_text())['decoder']
+    except (OSError, ValueError, KeyError):
+        decoder = 'hotword_ctc'
+    environment = 'hotword-venv' if decoder == 'hotword_ctc' else 'sensevoice-venv'
+    python = ROOT / 'runtime' / environment / 'bin/python'
+    modules = 'import numpy, onnxruntime, kaldi_native_fbank' if decoder == 'hotword_ctc' else 'import numpy, sherpa_onnx'
+    try:
+        result = run([str(python), '-c', modules])
+        add('inference_dependencies', 'ok' if result.returncode == 0 else 'error',
+            str(python) if result.returncode == 0 else result.stderr[-1200:])
+    except (OSError, subprocess.TimeoutExpired) as error:
+        add('inference_dependencies', 'error', str(error))
+    for name, path in [('application', ROOT / 'build/live-sub'), ('translation_server', ROOT / 'runtime/llama.cpp/build/bin/llama-server')]:
+        add(name, 'ok' if path.is_file() and os.access(path, os.X_OK) else 'error', str(path))
+    pinned = json.loads((ROOT / 'dependencies.lock.json').read_text())
+    asr = asr_directory(ROOT)
+    assets = [(asr / name, pinned[ASR_REPO]['files'][name]['sha256']) for name in ASR_FILES]
+    assets.append((Path(os.environ.get('TRANSLATION_MODEL_PATH', str(ROOT / 'models/translation.gguf'))), pinned['tencent/Hy-MT2-1.8B-GGUF']['sha256']))
+    for path, expected in assets:
+        if not path.is_file():
+            add(path.name, 'error', f'Missing {path}; run ./bin/setup')
+        elif verify_models:
+            add(path.name, 'ok' if checksum(path) == expected else 'error', f'SHA256 checked: {path}')
+        else:
+            add(path.name, 'ok', f'{path.stat().st_size} bytes: {path}; use --verify-models to verify SHA256')
+    if shutil.which('pactl'):
+        try:
+            result = run(['pactl', '-f', 'json', 'list', 'sources'])
+            sources = [item for item in json.loads(result.stdout) if not item.get('name', '').endswith('.monitor')] if result.returncode == 0 else []
+            add('microphone_devices', 'ok' if sources else 'error',
+                '; '.join(item.get('description', item['name']) for item in sources) if sources else 'No microphone visible. Run in the logged-in desktop session and connect the microphone.')
+        except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+            add('microphone_devices', 'error', str(error))
+    if services:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        for name, url in [('recognition_service', 'http://127.0.0.1:8178/'), ('translation_service', 'http://127.0.0.1:8179/health')]:
+            try:
+                with opener.open(url, timeout=5) as response:
+                    value = json.load(response)
+                if name == 'recognition_service' and value.get('config_directory') != str(config):
+                    raise ValueError('Recognition service belongs to another configuration directory')
+                add(name, 'ok', url)
+            except (OSError, ValueError) as error:
+                add(name, 'error', str(error))
+    add('acceptance', 'info', 'Device enumeration and healthy HTTP endpoints do not prove recognition quality. Test real English and Chinese speech in the room.')
+    return checks
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--preflight', action='store_true', help='check system prerequisites before models and tools are built')
+    parser.add_argument('--cpu', action='store_true', help='skip Vulkan prerequisites for an explicit CPU installation')
+    parser.add_argument('--services', action='store_true', help='also check the running local services')
+    parser.add_argument('--verify-models', action='store_true', help='read model files and verify their pinned SHA256 hashes')
+    args = parser.parse_args()
+    checks = inspect(args.preflight, args.cpu, args.services, args.verify_models)
+    success = not any(item['status'] == 'error' for item in checks)
+    if args.json:
+        print(json.dumps({'ok': success, 'root': str(ROOT), 'checks': checks}, ensure_ascii=False, indent=2))
+    else:
+        for item in checks:
+            print(f"{item['status'].upper():7} {item['name']}: {item['detail']}")
+    return 0 if success else 1
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, KeyError) as error:
+        sys.exit(f'Diagnostics failed: {error}')

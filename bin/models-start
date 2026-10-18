@@ -11,6 +11,8 @@ import sys
 import time
 import urllib.request
 
+from model_assets import asr_directory
+
 ROOT = Path(__file__).resolve().parent.parent
 
 def main():
@@ -18,7 +20,8 @@ def main():
     parser.add_argument("--cpu", action="store_true", help="disable GPU explicitly")
     parser.add_argument("--decoder", choices=["greedy", "hotword_ctc"], help="override asr-config.json; greedy restores the original sherpa-onnx path")
     args = parser.parse_args()
-    asr_config = json.loads((ROOT / "asr-config.json").read_text())
+    config_dir = Path(os.environ.get("LIVE_SUB_CONFIG_DIR", str(ROOT))).resolve()
+    asr_config = json.loads((config_dir / "asr-config.json").read_text())
     decoder = args.decoder or os.environ.get("SENSEVOICE_DECODER", asr_config["decoder"])
     if decoder not in ("greedy", "hotword_ctc"):
         raise ValueError("Unsupported decoder: " + decoder)
@@ -30,8 +33,7 @@ def main():
     asr_python = ROOT / ("runtime/hotword-venv/bin/python" if decoder == "hotword_ctc" else "runtime/sensevoice-venv/bin/python")
     asr_server = ROOT / "bin/sensevoice-server"
     llama = ROOT / "runtime/llama.cpp/build/bin/llama-server"
-    bundled = ROOT / "models/sensevoice-small-fp32"
-    asr = Path(os.environ.get("SENSEVOICE_MODEL_DIR", bundled if bundled.is_dir() else Path.home() / ".local/share/voxtype/models/sensevoice-small-fp32"))
+    asr = asr_directory(ROOT)
     translation = Path(os.environ.get("TRANSLATION_MODEL_PATH", ROOT / "models/translation.gguf"))
     for path in [asr_python, asr_server, llama, asr / "model.onnx", asr / "tokens.txt", translation]:
         if not path.is_file():

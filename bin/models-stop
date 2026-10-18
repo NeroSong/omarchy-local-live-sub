@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import time
 
 root = Path(__file__).resolve().parent.parent
 path = root / "runtime/models-process.json"
@@ -14,9 +15,22 @@ try:
     process = Path(f"/proc/{pid}")
     ticks = (process / "stat").read_text().split()[21]
     args = (process / "cmdline").read_bytes().split(b'\0')
-    if ticks != identity["start_ticks"] or not any(Path(os.fsdecode(a)).name == "models-start" for a in args if a):
+    cwd = process.joinpath("cwd").resolve()
+    if ticks != identity["start_ticks"] or not any((cwd / os.fsdecode(a)).resolve() == root / "bin/models-start" for a in args if a):
         sys.exit("Process identity changed; no process was stopped.")
     os.kill(pid, signal.SIGTERM)
-    print("Stopping this project's two model services.")
+    print("Stopping this project's two model services.", flush=True)
+    deadline = time.monotonic() + 20
+    while process.exists():
+        try:
+            state = process.joinpath("stat").read_text().split()
+            if state[2] == "Z" or state[21] != ticks:
+                break
+        except FileNotFoundError:
+            break
+        if time.monotonic() >= deadline:
+            sys.exit("Supervisor is still exiting; no additional process was killed. Wait before restarting.")
+        time.sleep(0.1)
+    print("Model services stopped.")
 except FileNotFoundError:
     print("No running model supervisor recorded for this project.")

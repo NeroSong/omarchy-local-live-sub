@@ -11,17 +11,29 @@ import re
 import wave
 import numpy as np
 
-bundled = Path(__file__).resolve().parent.parent / "models/sensevoice-small-fp32"
-model = Path(os.environ.get('SENSEVOICE_MODEL_DIR', str(bundled if bundled.is_dir() else Path.home() / '.local/share/voxtype/models/sensevoice-small-fp32')))
+from model_assets import asr_directory
+
 root = Path(__file__).resolve().parent.parent
-config = json.loads((root / 'asr-config.json').read_text())
+model = asr_directory(root)
+config_dir = Path(os.environ.get('LIVE_SUB_CONFIG_DIR', str(root))).resolve()
+config_path = config_dir / 'asr-config.json'
+config = json.loads(config_path.read_text())
 mode = os.environ.get('SENSEVOICE_DECODER', config['decoder'])
 if mode == 'hotword_ctc':
-    from hotword_decoder import Recognizer
+    from hotword_decoder import Recognizer, LiveDecoderConfig
     recognizer = Recognizer(model, config)
+    live_config = LiveDecoderConfig(config_path, recognizer.decoder.tokens, recognizer.decoder.blank, config)
+    def refresh_config():
+        global config
+        live_config.refresh()
+        recognizer.decoder = live_config.decoder
+        config = live_config.config
+        return {'config_revision':live_config.revision, 'config_error':live_config.error}
     def decode(samples, language):
         return recognizer.decode(samples, language)
 elif mode == 'greedy':
+    def refresh_config():
+        return {'config_revision':'', 'config_error':''}
     import sherpa_onnx
     recognizers = {}
     for language in ('zh', 'en', 'auto'):
@@ -48,8 +60,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        status = refresh_config()
         self.respond(200, {'engine': 'sensevoice', 'model': str(model), 'languages': ['zh', 'en'], 'decoder': mode,
-            'hotwords': [entry['term'] for entry in config['hotwords']] if mode == 'hotword_ctc' else []})
+            'hotwords': [entry['term'] for entry in config['hotwords']] if mode == 'hotword_ctc' else [],
+            'config_directory': str(config_dir), **status})
 
     def do_POST(self):
         if self.path != '/inference':
@@ -70,6 +84,7 @@ class Handler(BaseHTTPRequestHandler):
                 if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) != (1, 2, 16000):
                     raise ValueError('Expected mono 16kHz PCM16 WAV')
                 samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype='<i2').astype(np.float32) / 32768
+            status = refresh_config()
             result = decode(samples, language)
             detected = result['language']
             # Auto mode must not pass Korean/Japanese output into a Chinese-English discussion.
@@ -78,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
                 detected = 'zh'
             result['text'] = re.sub(r'<\|[^|]*\|>', '', result['text']).strip()
             result['language'] = detected or language
+            result.update(status)
             self.respond(200, result)
         except (ValueError, KeyError, wave.Error) as error:
             self.respond(400, {'error': str(error)})

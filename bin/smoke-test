@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Probe real local inference with synthetic silence and public example sentences."""
+import argparse
+import io
+import json
+import sys
+import urllib.request
+import wave
+
+
+def run():
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    def post(path, body, content_type):
+        request = urllib.request.Request(path, body, {'Content-Type': content_type})
+        with opener.open(request, timeout=120) as response:
+            return json.load(response)
+    audio = io.BytesIO()
+    with wave.open(audio, 'wb') as writer:
+        writer.setnchannels(1); writer.setsampwidth(2); writer.setframerate(16000)
+        writer.writeframes(b'\0' * 32000)
+    boundary = 'live-sub-install-check'
+    payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="silence.wav"\r\nContent-Type: audio/wav\r\n\r\n'.encode()
+               + audio.getvalue() + f'\r\n--{boundary}--\r\n'.encode())
+    recognized = post('http://127.0.0.1:8178/inference', payload, f'multipart/form-data; boundary={boundary}')
+    if not isinstance(recognized.get('text'), str):
+        raise RuntimeError('Recognition did not return a text field')
+    results = {'recognition_request': 'ok', 'decoder': recognized.get('decoder'), 'translations': []}
+    for text, target, language in [('This computer runs Linux.', 'Simplified Chinese', 'zh'), ('这台电脑运行 Linux。', 'English', 'en')]:
+        response = post('http://127.0.0.1:8179/v1/chat/completions', json.dumps({
+            'model': 'translator', 'messages': [{'role': 'user', 'content': f'Translate the following text into {target}. Output only the translation without any additional explanation:\n{text}'}],
+            'temperature': 0.7, 'top_p': 0.6, 'top_k': 20, 'repeat_penalty': 1.05, 'max_tokens': 256, 'stream': False}).encode(), 'application/json')
+        choice = response['choices'][0]
+        translated = choice['message']['content'].strip()
+        has_han = any('\u4e00' <= char <= '\u9fff' for char in translated)
+        if choice.get('finish_reason') != 'stop' or not translated or (language == 'zh' and not has_han) or (language == 'en' and has_han):
+            raise RuntimeError(f'{language} translation did not finish in the expected language: {translated}')
+        results['translations'].append({'target': language, 'text': translated})
+    results['note'] = 'No microphone accessed. This checks inference, not real speech quality or room acoustics.'
+    return results
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+    try:
+        result = run()
+        print(json.dumps({'ok': True, **result}, ensure_ascii=False, indent=2))
+    except (OSError, ValueError, KeyError, IndexError, RuntimeError) as error:
+        if args.json:
+            print(json.dumps({'ok': False, 'error': str(error)}, ensure_ascii=False))
+        else:
+            print(f'Inference smoke test failed: {error}', file=sys.stderr)
+        sys.exit(1)

@@ -9,6 +9,8 @@ import time
 import urllib.request
 
 root = Path(__file__).resolve().parent.parent
+os.environ['LIVE_SUB_PROJECT'] = str(root)
+os.environ['LIVE_SUB_CONFIG_DIR'] = str(Path(os.environ.get('LIVE_SUB_CONFIG_DIR', str(root))).resolve())
 logs = root / "runtime/logs"
 logs.mkdir(parents=True, exist_ok=True)
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -18,6 +20,10 @@ def ready():
             with opener.open(url, timeout=1) as response:
                 if response.status != 200:
                     return False
+                if url.endswith('8178/'):
+                    actual = json.load(response).get('config_directory')
+                    if actual != os.environ['LIVE_SUB_CONFIG_DIR']:
+                        raise RuntimeError('ASR service uses a different or older configuration. Stop capture, export captions, then run bin/models-stop and restart bin/start.')
         return True
     except OSError:
         return False
@@ -35,7 +41,10 @@ def owned():
         return False
 
 if "--status" in sys.argv:
-    available, tracked = ready(), owned()
+    try:
+        available, tracked = ready(), owned()
+    except (RuntimeError, ValueError) as error:
+        sys.exit(str(error))
     print(f"Models ready: {available}; owned by this project: {tracked}")
     sys.exit(0 if available and tracked else 1)
 
@@ -64,5 +73,5 @@ try:
     print("Model services remain running after closing the window. Use bin/models-stop to release them.")
     if os.environ.get("LIVE_SUB_FOREGROUND") == "1":
         sys.exit(window.wait())
-except OSError as error:
+except (OSError, RuntimeError, ValueError) as error:
     sys.exit(str(error))
