@@ -9,18 +9,34 @@ ApplicationWindow {
     minimumWidth: 560; minimumHeight: 460
     visible: true
     title: "Omarchy Local Live Sub"
-    color: "#101418"
-    Material.theme: Material.Dark
+    color: theme.background
+    Material.theme: theme.lightMode ? Material.Light : Material.Dark
     Material.accent: theme.accent
+    Material.foreground: theme.foreground
+    Material.background: theme.background
+    palette.window: theme.background
+    palette.windowText: theme.foreground
+    palette.text: theme.foreground
+    palette.buttonText: theme.foreground
+    palette.highlight: theme.accent
+    palette.highlightedText: theme.accentForeground
     property bool fullScreen: visibility === Window.FullScreen
     property bool previewReading: false
     property bool reading: backend.recording || backend.busy || previewReading
     property bool follow: true
-    property int subtitleSize: fullScreen ? 42 : 32
+    property int subtitleSizeAdjustment: 0
+    readonly property int subtitleSize: Math.max(18, Math.min(72, (fullScreen ? 42 : 32) + subtitleSizeAdjustment))
     property bool allowClose: false
+    property bool closeWhenIdle: false
     property string lastError: ""
 
+    function changeSubtitleSize(delta) {
+        const next = Math.max(18, Math.min(72, subtitleSize + delta))
+        subtitleSizeAdjustment += next - subtitleSize
+    }
+
     function toggleCapture() {
+        if (win.closeWhenIdle) return
         if (backend.recording) { backend.stop(); return }
         let input = backend.devices[microphone.currentIndex]
         win.follow = true
@@ -32,8 +48,11 @@ ApplicationWindow {
     }
     function showSettings() { settings.open() }
     onClosing: function(close) {
-        if (!allowClose && (backend.unsaved || backend.recording || backend.busy)) {
+        if (!allowClose && backend.recording) {
             close.accepted = false; quitDialog.open()
+        } else if (!allowClose && backend.busy) {
+            close.accepted = false
+            win.closeWhenIdle = true
         }
     }
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: win.toggleCapture() }
@@ -50,6 +69,10 @@ ApplicationWindow {
     Connections {
         target: backend
         function onChanged() {
+            if (win.closeWhenIdle) {
+                if (!backend.recording && !backend.busy) { win.allowClose = true; win.close() }
+                return
+            }
             if (backend.error !== win.lastError) {
                 win.lastError = backend.error
                 if (backend.error.length > 0) errorDialog.open()
@@ -68,12 +91,12 @@ ApplicationWindow {
             Label {
                 text: "Omarchy Local Live Sub"
                 font.pixelSize: 21; font.weight: Font.DemiBold
-                color: "#eef2f5"; elide: Text.ElideRight; Layout.fillWidth: true
+                color: theme.foreground; elide: Text.ElideRight; Layout.fillWidth: true
             }
-            ToolButton { text: win.fullScreen ? "退出全屏" : "全屏"; onClicked: win.toggleFullScreen() }
+            ToolButton { text: win.fullScreen ? qsTr("Exit full screen") : qsTr("Full screen"); onClicked: win.toggleFullScreen() }
             ToolButton {
-                icon.source: "qrc:/settings.svg"; icon.width: 20; icon.height: 20; icon.color: "#a4aeb7"
-                Accessible.name: "设置"; ToolTip.visible: hovered; ToolTip.text: "设置 · Ctrl+,"
+                icon.source: "qrc:/settings.svg"; icon.width: 20; icon.height: 20; icon.color: theme.secondaryForeground
+                Accessible.name: qsTr("Settings"); ToolTip.visible: hovered; ToolTip.text: qsTr("Settings · Ctrl+,")
                 onClicked: settings.open()
             }
         }
@@ -120,12 +143,12 @@ ApplicationWindow {
                 visible: readingArea.hasTranscript && !win.reading
                 width: parent.width - 12; height: visible ? 32 : 0
                 spacing: 40
-                Label { width: (parent.width - 40) / 2; text: "原文"; color: "#8c9aa5"; font.pixelSize: 13 }
-                Label { width: (parent.width - 40) / 2; text: "译文"; color: "#8bb7a4"; font.pixelSize: 13 }
+                Label { width: (parent.width - 40) / 2; text: qsTr("Original"); color: theme.mutedForeground; font.pixelSize: 13 }
+                Label { width: (parent.width - 40) / 2; text: qsTr("Translation"); color: theme.translationForeground; font.pixelSize: 13 }
             }
             Rectangle {
                 visible: readingArea.hasTranscript
-                x: (parent.width - 12) / 2; width: 1; height: parent.height; color: "#273139"
+                x: (parent.width - 12) / 2; width: 1; height: parent.height; color: theme.border
             }
             ListView {
                 id: subtitles
@@ -148,140 +171,225 @@ ApplicationWindow {
                     height: Math.max(sourceText.implicitHeight, translationText.implicitHeight)
                     onHeightChanged: readingArea.followLatest()
                     Text {
-                        id: sourceText; width: (parent.width - 40) / 2
+                        id: sourceText; objectName: "sourceCaptionText"; width: (parent.width - 40) / 2
                         text: originalText; textFormat: Text.PlainText; wrapMode: Text.Wrap
-                        color: "#f1f4f6"; font.pixelSize: win.subtitleSize; lineHeight: 1.12
+                        color: theme.foreground; font.pixelSize: win.subtitleSize; lineHeight: 1.12
                     }
                     Text {
-                        id: translationText; x: (parent.width + 40) / 2; width: (parent.width - 40) / 2
-                        text: translatedText === "正在本地翻译…" ? "" : translatedText
+                        id: translationText; objectName: "translatedCaptionText"; x: (parent.width + 40) / 2; width: (parent.width - 40) / 2
+                        text: translatedText === "Translating locally…" ? "" : translatedText
                         textFormat: Text.PlainText; wrapMode: Text.Wrap
-                        color: "#b0dac8"; font.pixelSize: win.subtitleSize; lineHeight: 1.12
+                        color: theme.translationForeground; font.pixelSize: win.subtitleSize; lineHeight: 1.12
                     }
                 }
             }
             Column {
                 anchors.centerIn: parent; width: parent.width * 0.9; spacing: 16
                 visible: !readingArea.hasTranscript
-                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "本地实时字幕和翻译"; color: "#eff3f5"; font.pixelSize: 32 }
-                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "Local real-time subtitles and translation"; color: "#a1adb7"; font.pixelSize: 17 }
-                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "一个 Omarchy App · 中文 / English"; color: "#71818d"; font.pixelSize: 13 }
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Local live captions and translation"); color: theme.foreground; font.pixelSize: 32 }
+                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "Local real-time subtitles and translation"; color: theme.secondaryForeground; font.pixelSize: 17 }
+                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: qsTr("An Omarchy app · Chinese / English"); color: theme.mutedForeground; font.pixelSize: 13 }
             }
         }
         Item {
-            Layout.fillWidth: true; implicitHeight: win.reading ? 36 : 44
+            Layout.fillWidth: true; implicitHeight: 44
             ToolButton {
                 visible: !win.reading
                 anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                text: "清空"; enabled: subtitles.count > 0 && !backend.recording && !backend.busy
+                text: qsTr("Clear"); enabled: subtitles.count > 0 && !backend.recording && !backend.busy
                 ToolTip.visible: hovered
-                ToolTip.text: enabled ? "清空字幕" : "结束字幕后可清空"
+                ToolTip.text: enabled ? qsTr("Clear captions") : qsTr("Stop captions before clearing")
                 onClicked: clearDialog.open()
             }
             Row {
                 anchors.centerIn: parent
-                spacing: win.reading ? 22 : 10
+                spacing: 10
                 Rectangle {
                     width: 8; height: 8; radius: 4
                     anchors.verticalCenter: parent.verticalCenter
-                    color: backend.error.length ? "#e59186" : backend.recording ? "#8ed8b5" : backend.busy ? "#dfbc79" : "#667681"
+                    color: backend.error.length ? theme.error : backend.recording ? theme.positive : backend.busy ? theme.warning : theme.mutedForeground
                     Accessible.name: backend.status
                     ToolTip.visible: statusHover.containsMouse
-                    ToolTip.text: backend.status + "\n待处理 " + backend.backlog + (win.follow ? "" : "\nEnd：跟随最新")
+                    ToolTip.text: backend.status + qsTr("\nPending: ") + backend.backlog + (win.follow ? "" : qsTr("\nEnd: follow latest"))
                     MouseArea { id: statusHover; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                 }
-                Label { visible: !win.reading; text: backend.demo ? "演示模式" : backend.error.length ? "需要检查设置" : microphone.count ? "准备就绪" : "等待麦克风"; color: "#7f909c"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                Label { visible: !win.reading; text: backend.demo ? qsTr("Demo mode") : backend.error.length ? qsTr("Check settings") : microphone.count ? qsTr("Ready") : qsTr("Waiting for a microphone"); color: theme.mutedForeground; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
                 ToolButton {
-                    visible: win.reading
-                    implicitWidth: 36; implicitHeight: 36
-                    enabled: backend.recording
-                    icon.source: "qrc:/stop.svg"; icon.width: 17; icon.height: 17; icon.color: hovered ? "#c4cdd4" : "#71828e"
-                    Accessible.name: "结束字幕"; ToolTip.visible: hovered; ToolTip.text: backend.recording ? "结束字幕 · Space" : "正在完成剩余字幕"
-                    onClicked: backend.stop()
+                    objectName: "decreaseSubtitleSize"
+                    visible: win.reading; enabled: win.subtitleSize > 18
+                    implicitWidth: 36; implicitHeight: 40
+                    text: "−"; font.pixelSize: 24
+                    Accessible.name: qsTr("Decrease text size")
+                    ToolTip.visible: hovered; ToolTip.text: qsTr("Decrease text size")
+                    onClicked: win.changeSubtitleSize(-2)
                 }
+                Label {
+                    objectName: "subtitleSizeLabel"
+                    visible: win.reading; text: win.subtitleSize
+                    width: 24; horizontalAlignment: Text.AlignHCenter
+                    color: theme.secondaryForeground; font.pixelSize: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                ToolButton {
+                    objectName: "increaseSubtitleSize"
+                    visible: win.reading; enabled: win.subtitleSize < 72
+                    implicitWidth: 36; implicitHeight: 40
+                    text: "+"; font.pixelSize: 24
+                    Accessible.name: qsTr("Increase text size")
+                    ToolTip.visible: hovered; ToolTip.text: qsTr("Increase text size")
+                    onClicked: win.changeSubtitleSize(2)
+                }
+            }
+            Button {
+                objectName: "stopCaptionsButton"
+                visible: win.reading
+                anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: Math.max(136, contentItem.implicitWidth + leftPadding + rightPadding)
+                implicitHeight: 40
+                leftPadding: 20; rightPadding: 20
+                enabled: backend.recording
+                text: qsTr("Stop captions")
+                font.pixelSize: 14; font.weight: Font.DemiBold
+                Material.foreground: enabled ? theme.foreground : theme.mutedForeground
+                background: Rectangle {
+                    radius: 6
+                    color: parent.down ? theme.selection : parent.hovered && parent.enabled ? theme.selection : "transparent"
+                    border.width: 1
+                    border.color: parent.enabled ? (parent.hovered ? theme.accent : theme.secondaryForeground) : theme.border
+                }
+                Accessible.name: qsTr("Stop captions"); ToolTip.visible: hovered; ToolTip.text: backend.recording ? qsTr("Stop captions · Space") : qsTr("Finishing pending captions")
+                onClicked: backend.stop()
             }
             Button {
                 visible: !win.reading
                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                text: "开始字幕"; highlighted: true; enabled: !backend.demo && !backend.busy && microphone.count > 0
+                text: qsTr("Start captions"); highlighted: true; Material.foreground: theme.accentForeground; enabled: !backend.demo && !backend.busy && microphone.count > 0
                 onClicked: win.toggleCapture()
             }
         }
     }
     component AppDialog: Dialog {
         id: dialogRoot
-        Material.theme: Material.Dark
-        Material.background: "#192128"
-        background: Rectangle { color: "#192128"; radius: 14; border.color: "#303c46" }
-        Overlay.modal: Rectangle { color: "#55000000" }
-        header: Rectangle {
-            color: "#192128"; implicitHeight: 58
-            Label { anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter; text: dialogRoot.title; color: "#eef2f5"; font.pixelSize: 22 }
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        padding: 24
+        topPadding: 0
+        bottomPadding: 0
+        Material.theme: theme.lightMode ? Material.Light : Material.Dark
+        Material.background: theme.panelBackground
+        Material.foreground: theme.foreground
+        Material.accent: theme.accent
+        background: Rectangle { color: theme.panelBackground; radius: 14; border.color: theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, theme.lightMode ? 0.18 : 0.35) }
+        header: Item {
+            implicitHeight: 68
+            Label { anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter; text: dialogRoot.title; color: theme.foreground; font.pixelSize: 22 }
+        }
+        footer: Item {
+            implicitHeight: dialogRoot.standardButtons === Dialog.NoButton ? 20 : 68
+            Row {
+                anchors.right: parent.right; anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter; spacing: 8
+                Button { visible: (dialogRoot.standardButtons & Dialog.Cancel) !== 0; text: qsTr("Cancel"); onClicked: dialogRoot.reject() }
+                Button { visible: (dialogRoot.standardButtons & Dialog.Ok) !== 0; text: qsTr("OK"); onClicked: dialogRoot.accept() }
+            }
         }
     }
     AppDialog {
         id: settings
-        anchors.centerIn: parent; modal: true; title: "设置"
-        width: Math.min(win.width - 40, 480)
-        Material.theme: Material.Dark
-        background: Rectangle { color: "#192128"; radius: 14; border.color: "#303c46" }
-        Overlay.modal: Rectangle { color: "#55000000" }
-        header: Rectangle {
-            color: "#192128"; implicitHeight: 58
-            Label { anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter; text: "设置"; color: "#eef2f5"; font.pixelSize: 22 }
-        }
+        objectName: "settingsDialog"
+        anchors.centerIn: parent; modal: true; title: qsTr("Settings")
+        width: Math.min(win.width - 40, 540)
         standardButtons: Dialog.NoButton
-        ColumnLayout {
-            width: parent.width; spacing: 14
-            Label { text: "麦克风"; color: "#a4aeb7" }
+        footer: Item {
+            implicitHeight: 68
+            Button { objectName: "settingsDone"; anchors.right: parent.right; anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter; text: qsTr("Done"); onClicked: settings.close() }
+        }
+        contentItem: ScrollView {
+            id: settingsScroll
+            objectName: "settingsScroll"
+            implicitHeight: Math.min(settingsFields.implicitHeight, win.height - 180)
+            contentWidth: availableWidth
+            clip: true
+            ColumnLayout {
+            id: settingsFields
+            width: settingsScroll.availableWidth; spacing: 14
+            Label { text: qsTr("Interface language"); color: theme.secondaryForeground }
+            ComboBox {
+                id: interfaceLanguage
+                objectName: "interfaceLanguage"
+                Layout.fillWidth: true
+                model: [qsTr("Follow Omarchy"), "简体中文", "English"]
+                function syncSelection() { currentIndex = ["auto", "zh-CN", "en"].indexOf(translator.selection) }
+                Component.onCompleted: syncSelection()
+                onModelChanged: Qt.callLater(syncSelection)
+                onActivated: function(index) { translator.setSelection(["auto", "zh-CN", "en"][index]) }
+                Connections { target: translator; function onChanged() { Qt.callLater(interfaceLanguage.syncSelection) } }
+            }
+            Label { text: qsTr("Microphone"); color: theme.secondaryForeground }
             RowLayout {
                 Layout.fillWidth: true
                 ComboBox {
                     id: microphone; Layout.fillWidth: true; model: backend.devices; textRole: "label"
                     enabled: !backend.recording && !backend.busy && !backend.demo
-                    displayText: count === 0 ? "暂无麦克风" : currentText
+                    displayText: count === 0 ? qsTr("No microphone available") : currentText
                 }
                 ToolButton { text: "↻"; enabled: !backend.recording && !backend.busy; onClicked: backend.refreshDevices() }
             }
-            Label { text: "说话语言"; color: "#a4aeb7" }
-            ComboBox { id: language; currentIndex: 0; Layout.fillWidth: true; model: ["自动 · 中英互译", "英语 → 中文", "中文 → 英语"]; enabled: !backend.recording && !backend.busy }
+            Label { text: qsTr("Spoken language"); color: theme.secondaryForeground }
+            ComboBox { id: language; currentIndex: 0; Layout.fillWidth: true; model: [qsTr("Auto · Chinese ↔ English"), qsTr("English → Chinese"), qsTr("Chinese → English")]; enabled: !backend.recording && !backend.busy }
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "收音门限"; color: "#a4aeb7" }
+                Label { text: qsTr("Microphone threshold"); color: theme.secondaryForeground }
                 Item { Layout.fillWidth: true }
-                Label { text: Math.round(threshold.value) + " dB"; color: "#a4aeb7" }
+                Label { text: Math.round(threshold.value) + " dB"; color: theme.secondaryForeground }
             }
             Slider { id: threshold; Layout.fillWidth: true; from: -60; to: -25; value: -42; stepSize: 1; enabled: !backend.recording && !backend.busy }
-            Label { Layout.fillWidth: true; text: backend.error.length ? backend.error : backend.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: backend.error.length ? "#e59186" : "#81939f"; font.pixelSize: 12 }
             RowLayout {
-                Button { text: "导出文字"; enabled: subtitles.count > 0 && !backend.demo; onClicked: backend.exportSession() }
-                Button { text: "清空字幕"; enabled: subtitles.count > 0 && !backend.recording && !backend.busy; onClicked: clearDialog.open() }
-                Item { Layout.fillWidth: true }
-                ToolButton { text: "帮助"; onClicked: help.open() }
+                Layout.fillWidth: true
+                Label { text: qsTr("Topic vocabulary · live updates"); color: theme.secondaryForeground; Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
-            Button { Layout.alignment: Qt.AlignRight; text: "完成"; onClicked: settings.close() }
+            Button { objectName: "vocabularyAgent"; text: qsTr("Discuss vocabulary with Agent"); onClicked: backend.openVocabularyAgent(translator.language) }
+            Label { Layout.fillWidth: true; text: qsTr("The default Agent receives vocabulary paths, format rules and testing guidance. Tell it the topic and examples to adjust."); wrapMode: Text.Wrap; color: theme.mutedForeground; font.pixelSize: 12 }
+            Label { Layout.fillWidth: true; text: backend.configStatus; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.secondaryForeground; font.pixelSize: 12 }
+            Label { Layout.fillWidth: true; text: backend.error.length ? backend.error : backend.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: backend.error.length ? theme.error : theme.mutedForeground; font.pixelSize: 12 }
+            RowLayout {
+                Button { text: qsTr("Export captions"); enabled: subtitles.count > 0 && !backend.demo; onClicked: backend.exportSession() }
+                Button { text: qsTr("Clear captions"); enabled: subtitles.count > 0 && !backend.recording && !backend.busy; onClicked: clearDialog.open() }
+                Item { Layout.fillWidth: true }
+                ToolButton { text: qsTr("Help"); onClicked: help.open() }
+            }
+            }
         }
     }
     AppDialog {
-        id: help; anchors.centerIn: parent; modal: true; title: "使用说明"
+        id: help; objectName: "helpDialog"; anchors.centerIn: parent; modal: true; title: qsTr("Help")
         width: Math.min(win.width - 40, 500); standardButtons: Dialog.Ok
-        Label { width: parent.width; wrapMode: Text.Wrap; color: "#d4dce2"; text: "Space  开始 / 结束字幕\nF11  全屏    Esc  返回窗口\nCtrl+,  设置    Ctrl+S  导出文字\nPageUp / PageDown  回看    End  跟随最新\nQ  退出    ?  帮助\n\n原文约每 2 秒更新并持续补全，停顿约 0.9 秒后整句翻译；连续发言最长 18 秒。默认自动检测中英文，译文逐步显示，两栏同步滚动。\n\n仅导出时保存文字，不保存录音。术语别名在 glossary.json 中编辑，下次开始生效。" }
+        contentItem: ScrollView {
+            id: helpScroll; contentWidth: availableWidth; clip: true
+            implicitHeight: Math.min(helpText.implicitHeight, win.height - 180)
+            Label {
+                id: helpText; width: helpScroll.availableWidth; wrapMode: Text.Wrap; color: theme.foreground
+                text: qsTr("Space  Start / stop captions\nF11  Full screen    Esc  Return to window\nCtrl+,  Settings    Ctrl+S  Export\nPageUp / PageDown  Review    End  Follow latest\nQ  Quit    ?  Help\n\nOriginal text updates about every 2 seconds. Translation begins after a pause of about 0.9 seconds; continuous speech is split after 18 seconds. Chinese and English are detected automatically.\n\nAudio is not saved. Captions are saved only when exported. Open the default Agent from Settings to discuss topic vocabulary. Valid changes apply to subsequent tasks; invalid changes keep the previous configuration.")
+            }
+        }
     }
     AppDialog {
-        id: errorDialog; anchors.centerIn: parent; modal: true; title: "字幕服务提示"
+        id: errorDialog; objectName: "errorDialog"; anchors.centerIn: parent; modal: true; title: qsTr("Caption service")
         width: Math.min(win.width - 40, 480); standardButtons: Dialog.Ok
         Label { width: parent.width; text: backend.error; textFormat: Text.PlainText; wrapMode: Text.Wrap }
     }
     AppDialog {
-        id: clearDialog; anchors.centerIn: parent; modal: true; title: "清空本次字幕？"
+        id: clearDialog; objectName: "clearDialog"; anchors.centerIn: parent; modal: true; title: qsTr("Clear these captions?")
         standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text: "未导出的文字将丢失。可先按 Ctrl+S 导出。" }
+        Label { text: qsTr("Unexported captions will be lost. Press Ctrl+S to export first.") }
         onAccepted: backend.clear()
     }
     AppDialog {
-        id: quitDialog; anchors.centerIn: parent; modal: true; title: "退出字幕？"
+        id: quitDialog; objectName: "quitDialog"; anchors.centerIn: parent; modal: true; title: qsTr("Quit captions?")
         standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text: "收音和待处理任务将停止。未导出的文字将丢失。\n可取消后结束收音，等待处理完成，再导出。" }
+        Label { text: qsTr("Recording and pending tasks will stop. Unexported captions will be lost.\nCancel to stop recording, finish pending tasks and export first.") }
         onAccepted: { win.allowClose = true; win.close() }
     }
 }

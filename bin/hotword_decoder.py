@@ -7,9 +7,48 @@ from dataclasses import dataclass
 import math
 import re
 import time
+import json
+import hashlib
 import numpy as np
 
 NEG = -math.inf
+
+class LiveDecoderConfig:
+    """Replace the search graph only after the complete configuration validates."""
+    editable = {'hotwords', 'beam_size', 'acoustic_top_k', 'max_token_log_gap'}
+
+    def __init__(self, path, tokens, blank_id, initial):
+        self.path, self.tokens, self.blank_id = path, tokens, blank_id
+        self.initial = json.loads(json.dumps(initial))
+        self.config = self.initial
+        self.decoder = HotwordCTC(tokens, blank_id, initial)
+        self.revision = hashlib.sha256(json.dumps(initial, sort_keys=True).encode()).hexdigest()
+        self.seen = None
+        self.error = ''
+
+    def refresh(self):
+        try:
+            with self.path.open('rb') as source:
+                data = source.read(256 * 1024 + 1)
+            if len(data) > 256 * 1024:
+                raise ValueError('ASR configuration exceeds 256 KiB')
+            if data == self.seen:
+                return
+            self.seen = data
+            candidate = json.loads(data)
+            if not isinstance(candidate, dict):
+                raise ValueError('ASR configuration must be an object')
+            if {k:v for k,v in candidate.items() if k not in self.editable} != {k:v for k,v in self.initial.items() if k not in self.editable}:
+                raise ValueError('Decoder mode and threads require a service restart; keep those values unchanged for hot reload')
+            replacement = HotwordCTC(self.tokens, self.blank_id, candidate)
+            self.decoder, self.config = replacement, candidate
+            self.revision = hashlib.sha256(data).hexdigest()
+            self.error = ''
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as error:
+            self.error = str(error)
+            # Retry the same valid bytes after a temporary read failure.
+            if isinstance(error, OSError):
+                self.seen = None
 
 def logadd(a, b):
     if a == NEG: return b
@@ -71,6 +110,16 @@ class Beam:
 
 class HotwordCTC:
     def __init__(self, tokens, blank_id, config):
+        for key in ('beam_size', 'acoustic_top_k'):
+            if type(config[key]) is not int:
+                raise ValueError(key + ' must be an integer')
+        if type(config['max_token_log_gap']) not in (int, float):
+            raise ValueError('max_token_log_gap must be a number')
+        if not isinstance(config['hotwords'], list) or len(config['hotwords']) > 128:
+            raise ValueError('hotwords must be an array with at most 128 entries')
+        for entry in config['hotwords']:
+            if not isinstance(entry, dict) or not isinstance(entry.get('term'), str) or type(entry.get('score')) not in (int, float):
+                raise ValueError('Each hotword requires a string term and numeric score')
         self.tokens = tokens
         self.pieces = [token.replace('▁', ' ') for token in tokens]
         self.blank = blank_id

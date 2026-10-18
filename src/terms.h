@@ -9,6 +9,9 @@ public:
     bool load(const QString &path, QString &error);
     QString normalize(QString text) const;
     QString prompt() const;
+    QString translationHints(const QString &target) const;
+    QString revision() const { return loadedRevision; }
 private:
     QJsonArray entries;
+    QString loadedRevision;
 };

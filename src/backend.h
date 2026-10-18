@@ -22,6 +22,8 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantList captions READ captions NOTIFY captionsChanged)
     Q_PROPERTY(int captionCount READ captionCount NOTIFY captionsChanged)
+    Q_PROPERTY(QString configDirectory READ configDirectory CONSTANT)
+    Q_PROPERTY(QString configStatus READ configStatus NOTIFY changed)
 public:
     explicit Backend(QString root, bool demo = false, QObject *parent = nullptr);
     ~Backend();
@@ -29,19 +31,22 @@ public:
     bool busy() const { return starting || capture.state() != QProcess::NotRunning || asrBusy || translationBusy || !audioQueue.isEmpty() || !textQueue.isEmpty(); }
     bool demo() const { return isDemo; }
     bool unsaved() const { return dirty; }
-    QString status() const { return message; }
-    QString error() const { return failure; }
+    QString status() const;
+    QString error() const;
     double level() const { return segmenter.levelDb; }
     int backlog() const { return audioQueue.size() + textQueue.size() + int(asrBusy) + int(translationBusy); }
     QVariantList devices() const { return inputs; }
     QVariantList captions() const { return rows; }
     int captionCount() const { return int(rows.size()); }
-    Q_INVOKABLE QVariantMap captionAt(int index) const { return index >= 0 && index < rows.size() ? rows[index].toMap() : QVariantMap{}; }
+    QString configDirectory() const { return configDir; }
+    QString configStatus() const;
+    Q_INVOKABLE QVariantMap captionAt(int index) const;
     Q_INVOKABLE void refreshDevices();
     Q_INVOKABLE void toggle(const QString &source, const QString &language, double threshold);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
     Q_INVOKABLE void exportSession();
+    Q_INVOKABLE void openVocabularyAgent(const QString &language);
     bool restoreSession(const QString &path);
 private:
     struct AudioJob { QByteArray pcm; qint64 endMs; int utterance; bool final; };
@@ -51,12 +56,17 @@ private:
     void queueAudio(Segmenter::Update update);
     void recognizeNext();
     void translateNext();
-    void setFailure(const QString &text);
+    void setFailure(const QString &text, const QStringList &arguments = {});
+    void setMessage(const QString &text, const QStringList &arguments = {});
+    void refreshTerms();
     QNetworkRequest request(const QString &base, const QString &path) const;
     QString root, sourceLanguage = "auto", asrBase, translationBase;
-    QString message = "选择麦克风，开始本地双语字幕", failure;
+    QString configDir, termsWarning, asrConfigWarning, asrConfigRevision;
+    QString agentLanguage;
+    QString message = "Choose a microphone to start local bilingual captions", failure;
+    QStringList messageArguments, failureArguments;
     bool active = false, starting = false, asrBusy = false, translationBusy = false, isDemo = false, dirty = false;
-    QProcess capture, enumerate;
+    QProcess capture, enumerate, agentCheck;
     QNetworkAccessManager network;
     Segmenter segmenter;
     Terms terms;

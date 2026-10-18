@@ -1,1 +1,1 @@
-<RCC><qresource prefix="/"><file alias="Main.qml">Main.qml</file><file>settings.svg</file><file>stop.svg</file></qresource></RCC>
+<RCC><qresource prefix="/"><file alias="Main.qml">Main.qml</file><file>settings.svg</file><file>stop.svg</file><file>i18n/zh-CN.json</file></qresource></RCC>

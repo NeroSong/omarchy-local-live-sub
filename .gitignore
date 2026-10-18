@@ -2,6 +2,7 @@
 /runtime/
 /models/
 /sessions/
+/topics/
 /pkgbuild/pkg/
 /pkgbuild/src/
 *.pkg.tar.*

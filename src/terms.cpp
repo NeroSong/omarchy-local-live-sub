@@ -1,5 +1,6 @@
 #include "terms.h"
 #include <QFile>
+#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -62,33 +63,50 @@ struct Match { int start, length; QString replacement, reason; int priority; };
 
 bool Terms::load(const QString &path, QString &error) {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) { error = "无法读取术语表：" + path; return false; }
+    if (!file.open(QIODevice::ReadOnly)) { error = "Cannot read vocabulary: " + path; return false; }
+    if (file.size() > 256 * 1024) { error = "Vocabulary must not exceed 256 KiB"; return false; }
+    const auto bytes = file.readAll();
+    const auto revision = QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+    if (revision == loadedRevision) { error.clear(); return true; }
     QJsonParseError parse;
-    const auto doc = QJsonDocument::fromJson(file.readAll(), &parse);
+    const auto doc = QJsonDocument::fromJson(bytes, &parse);
     if (!doc.isArray() || parse.error != QJsonParseError::NoError) {
-        error = "术语表必须是 JSON 数组：" + parse.errorString(); return false;
+        error = "Vocabulary must be a JSON array: " + parse.errorString(); return false;
     }
     const auto values = doc.array();
+    QStringList names;
     for (const auto &value : values) {
         const auto item = value.toObject();
         if (item.value("term").toString().trimmed().isEmpty() || !item.value("aliases").isArray()) {
-            error = "每个术语需要非空 term 和 aliases 数组"; return false;
+            error = "Each entry requires a nonempty term and aliases array"; return false;
+        }
+        const auto name = item.value("term").toString().trimmed().toCaseFolded();
+        if (names.contains(name)) { error = "Duplicate vocabulary term: " + name; return false; }
+        names.append(name);
+        if (item.contains("translations")) {
+            if (!item.value("translations").isObject()) { error = "translations must be an object with zh/en keys"; return false; }
+            const auto translations = item.value("translations").toObject();
+            for (auto it = translations.begin(); it != translations.end(); ++it)
+                if ((it.key() != "zh" && it.key() != "en") || !it.value().isString() || it.value().toString().trimmed().isEmpty()) {
+                    error = "translations accepts only nonempty zh/en strings"; return false;
+                }
         }
         for (const auto &field : {"aliases", "context_aliases", "context", "force_aliases", "force_patterns", "preserve"}) {
             if (!item.contains(field)) continue;
-            if (!item.value(field).isArray()) { error = QString(field) + " 必须是字符串数组"; return false; }
+            if (!item.value(field).isArray()) { error = QString(field) + " must be an array of strings"; return false; }
             for (const auto &alias : item.value(field).toArray())
                 if (!alias.isString() || alias.toString().trimmed().isEmpty()) {
-                    error = QString(field) + " 必须包含非空字符串"; return false;
+                    error = QString(field) + " must contain nonempty strings"; return false;
                 }
         }
         for (const auto &pattern : item.value("force_patterns").toArray()) {
-            if (!QRegularExpression(pattern.toString()).isValid()) { error = "强制纠错正则表达式无效"; return false; }
+            if (!QRegularExpression(pattern.toString()).isValid()) { error = "Invalid force_patterns regular expression"; return false; }
         }
-        if (item.contains("force_phonetic") && !item.value("force_phonetic").isBool()) { error = "force_phonetic 必须是布尔值"; return false; }
-        if (item.contains("fuzzy") && !item.value("fuzzy").isBool()) { error = "fuzzy 必须是布尔值"; return false; }
+        if (item.contains("force_phonetic") && !item.value("force_phonetic").isBool()) { error = "force_phonetic must be boolean"; return false; }
+        if (item.contains("fuzzy") && !item.value("fuzzy").isBool()) { error = "fuzzy must be boolean"; return false; }
     }
     entries = values;
+    loadedRevision = revision;
     error.clear();
     return true;
 }
@@ -239,4 +257,14 @@ QString Terms::prompt() const {
     QStringList names;
     for (const auto &value : entries) names.append(value.toObject().value("term").toString());
     return names.join(", ");
+}
+
+QString Terms::translationHints(const QString &target) const {
+    QJsonObject mappings;
+    for (const auto &value : entries) {
+        const auto item = value.toObject();
+        const auto translated = item.value("translations").toObject().value(target).toString();
+        if (!translated.isEmpty()) mappings.insert(item.value("term").toString(), translated);
+    }
+    return mappings.isEmpty() ? QString{} : QString::fromUtf8(QJsonDocument(mappings).toJson(QJsonDocument::Compact));
 }

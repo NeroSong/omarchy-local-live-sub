@@ -12,5 +12,6 @@ public:
 private:
     void event();
     QByteArray pending, data;
+    QString rawText;
     bool done = false, stopped = false;
 };

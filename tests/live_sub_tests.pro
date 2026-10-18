@@ -1,5 +1,4 @@
-QT += core testlib
-QT -= gui
+QT += core gui network testlib
 CONFIG += c++17 testcase console
 TARGET = live_sub_tests
 INCLUDEPATH += ../src
@@ -7,3 +6,9 @@ SOURCES += live_sub_tests.cpp ../src/segmenter.cpp ../src/terms.cpp ../src/trans
 HEADERS += ../src/segmenter.h ../src/terms.h ../src/translation.h
 HEADERS += ../src/translationstream.h
 SOURCES += ../src/translationstream.cpp
+HEADERS += ../src/backend.h
+SOURCES += ../src/backend.cpp
+HEADERS += ../src/translator.h ../src/agentcontext.h
+SOURCES += ../src/translator.cpp ../src/agentcontext.cpp
+HEADERS += ../src/theme.h
+SOURCES += ../src/theme.cpp
