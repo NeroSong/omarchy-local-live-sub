@@ -8,6 +8,16 @@ Live Chinese–English captions and translation for face-to-face conversations o
 
 Built for technical discussions, product demos, and conversations with visiting teams.
 
+## In action
+
+Original speech and live translation, side by side. Click any screenshot to view it at full resolution.
+
+[![Live Chinese–English captions with original speech and translation side by side](assets/screenshots/live-captions.webp)](assets/screenshots/live-captions.webp)
+
+English settings: choose your microphone, spoken language, and topic vocabulary.
+
+[![English settings: microphone, spoken language, capture threshold, and topic vocabulary](assets/screenshots/settings-en.webp)](assets/screenshots/settings-en.webp)
+
 [Get started](#get-started) · [Using the app](#using-the-app) · [Tune your vocabulary](#make-it-understand-your-topic) · [Installation & troubleshooting](INSTALL.md)
 
 ## Why use it?
@@ -26,10 +36,12 @@ Built for technical discussions, product demos, and conversations with visiting 
 | Requirement | Details |
 | --- | --- |
 | Desktop | x86_64 Omarchy / Arch Linux, in your logged-in desktop session |
-| Hardware target | Beelink Intel Core Ultra 9 285H with Intel Vulkan graphics; other hardware needs its own driver and performance checks |
+| Verified hardware | Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan |
 | Memory & disk | 32 GB RAM recommended, at least 16 GB; allow 20 GB free disk space for setup |
 | Microphone | A microphone positioned for the people speaking |
 | First setup | Internet access to GitHub, Hugging Face, and PyPI; about 2.85 GB of models, plus dependencies and source code |
+
+Other x86_64 hardware configurations may also work, but have not been verified. Check the appropriate GPU drivers and test performance on your machine.
 
 The default configuration uses CPU speech recognition and Vulkan-accelerated translation. No NPU or Voxtype installation is required. This is currently a source installation; setup builds the app and inference engine on your machine.
 
@@ -94,17 +106,17 @@ Names, projects, and technical terms deserve their own vocabulary. There are thr
 
 | When… | Edit… | Example |
 | --- | --- | --- |
-| Recognition misses a name | `hotwords` in `asr-config.json` | `{"term":"Beelink","score":3}` |
-| The same wrong spelling keeps appearing | A term's `aliases` in `glossary.json` | Map `bee link` to `Beelink` |
-| The name is right but its translation is wrong | A term's `translations` in `glossary.json` | Use `零刻` in Chinese and `Beelink` in English |
+| Recognition misses a name | `hotwords` in `asr-config.json` | `{"term":"ExampleCorp","score":3}` |
+| The same wrong spelling keeps appearing | A term's `aliases` in `glossary.json` | Map `example corp` to `ExampleCorp` |
+| The name is right but its translation is wrong | A term's `translations` in `glossary.json` | Use `示例公司` in Chinese and `ExampleCorp` in English |
 
 For example, add this entry to the existing glossary array:
 
 ```json
 {
-  "term": "Beelink",
-  "aliases": ["零刻", "bee link"],
-  "translations": {"zh": "零刻", "en": "Beelink"}
+  "term": "ExampleCorp",
+  "aliases": ["示例公司", "example corp"],
+  "translations": {"zh": "示例公司", "en": "ExampleCorp"}
 }
 ```
 
@@ -114,7 +126,7 @@ Save valid JSON and subsequent work picks it up automatically. Invalid edits ret
 
 In settings, **Open Agent to discuss vocabulary** opens your configured Omarchy agent with the vocabulary paths and editing guidance. Discuss your topic and examples first. The app does not automatically include captions, recordings, or logs in that prompt; the agent's provider may use online services. Captions work without an agent.
 
-**About the bundled Omarchy rule:** the default glossary deliberately uses aggressive phonetic correction for “Omarchy.” It can also rewrite ordinary phrases such as “how much” or “so much.” Review `raw` and correction records if the output looks surprising. Set that entry's `force_phonetic` to `false` for conservative behavior; retain the `come` protection in `preserve`.
+**About the bundled Omarchy rule:** defaults are conservative. Confirmed aliases such as `o match` and `omachi` are corrected; ambiguous forms such as `O much` need related context. Common phrases such as “how much,” “so much,” and “too much” stay unchanged. The Omarchy recognition hotword uses a score of 6 to favor acoustically plausible candidates; this does not guarantee recognition. Aggressive phonetic correction remains available by explicitly setting `force_phonetic` to `true` for a specialized topic, but can rewrite ordinary speech. Retain the `come`, `how much`, `so much`, and `too much` protections in `preserve` and review `raw` and correction records when tuning.
 
 For separate topic folders, the complete glossary schema, and decoder details, see the [extended Chinese reference](README.zh-CN.md#现场调整与主题配置). To use a topic folder, put both JSON files there and set `LIVE_SUB_CONFIG_DIR` when starting. Stop capture, drain pending work, export, and stop model services before switching directories.
 

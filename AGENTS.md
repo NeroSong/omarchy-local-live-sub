@@ -1,6 +1,6 @@
 # Guidance for installation and maintenance agents
 
-This repository is a C++ / Qt Quick application for local Chinese–English microphone captions on x86_64 Omarchy / Arch Linux. Start with README.md and INSTALL.md. The primary handoff target is a Beelink Intel Core Ultra 9 285H desktop using Intel Vulkan graphics. Do not assume another developer's model paths or installed Voxtype are present.
+This repository is a C++ / Qt Quick application for local Chinese–English microphone captions on x86_64 Omarchy / Arch Linux. Start with README.md and INSTALL.md. The verified hardware configuration is an Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work but have not been verified; check drivers and performance on the target machine. Do not assume another developer's model paths or installed Voxtype are present.
 
 ## Installation workflow
 
@@ -15,7 +15,7 @@ This repository is a C++ / Qt Quick application for local Chinese–English micr
 - Keep Voxtype, Fcitx/Rime, PipeWire, default audio devices, microphone gain, global shortcuts, desktop configuration and unrelated processes unchanged. This app captures independently and has no translated audio playback.
 - Services listen only on 127.0.0.1:8178 and :8179. `bin/models-stop` checks the project's supervisor identity. Do not free ports by broadly killing Python, ffmpeg or llama processes.
 - Models, runtime environments, logs, builds and sessions are local artifacts. Do not commit them or send meeting content to external services. The optional vocabulary Agent receives config guidance, not automatic meeting transcripts.
-- Before restarting services, stop capture, wait for queued work and let the user export anything needed. Preserve glossary.json, asr-config.json and topics/. Hot updates are documented in README.md; retain `come` protection and do not change the deliberate Omarchy forced-correction policy without user direction.
+- Before restarting services, stop capture, wait for queued work and let the user export anything needed. Preserve glossary.json, asr-config.json and topics/. Hot updates are documented in README.md; retain `come` protection and the conservative Omarchy default; enable aggressive forced correction only with user direction for a specialized topic.
 - The desktop launcher points to this checkout. Keep it in place or rerun setup after moving. Closing the window leaves model services running. Stopped captions close without confirmation; pending work drains before exit, and unexported content is not automatically persisted.
 
 ## Development checks

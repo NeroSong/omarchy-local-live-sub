@@ -6,6 +6,16 @@
 
 为 Omarchy 打造的实时字幕与翻译应用。选择房间里的麦克风，把中英文对话变成并排显示的原文与译文，让双方在同一块屏幕上跟上讨论。适合技术交流、产品演示和来访沟通。
 
+## 效果演示
+
+原文与实时译文并排显示。点击任意截图可查看原始分辨率大图。
+
+[![本地中英双语字幕：原文与译文双栏对齐显示](assets/screenshots/live-captions.webp)](assets/screenshots/live-captions.webp)
+
+中文设置：选择麦克风、说话语言并调整主题词表。
+
+[![中文设置：麦克风、说话语言、收音门限与主题词表](assets/screenshots/settings-zh-CN.webp)](assets/screenshots/settings-zh-CN.webp)
+
 ## 为什么使用它
 
 - **准备好后即可离线使用。** 语音识别与翻译都在本机运行，字幕功能无需云端账号或 API Key，会议音频和文字不上传。
@@ -15,13 +25,13 @@
 - **融入 Omarchy 桌面。** C++ / Qt Quick 界面实时跟随系统深浅主题和配色；独立采集麦克风，保留现有 Voxtype、Fcitx/Rime 和音频设置。
 - **保留可核对的文字。** 主动导出原始识别、修正后的原文、译文及纠错记录；音频只保留在内存。
 
-**支持范围：** x86_64 Omarchy / Arch Linux；主要安装目标为零刻 Intel Core Ultra 9 285H、Intel Vulkan 显卡。其他硬件需要单独确认驱动与实际速度。首次安装建议 32 GB 内存（至少 16 GB）、20 GB 空闲磁盘及可用网络；模型下载约 2.85 GB，另需依赖和源码。
+**支持范围：** x86_64 Omarchy / Arch Linux；已验证的硬件为 Intel Core Ultra 9 285H CPU 与 Intel 集成显卡（Vulkan）。其他 x86_64 硬件配置也可能支持，但尚未验证，需按实际显卡确认驱动并测试运行效果。首次安装建议 32 GB 内存（至少 16 GB）、20 GB 空闲磁盘及可用网络；模型下载约 2.85 GB，另需依赖和源码。
 
 [快速安装](#给首次使用者和安装-ai) · [日常使用](#使用) · [词表与主题配置](#现场调整与主题配置) · [安装与排错](INSTALL.zh-CN.md)
 
 ## 给首次使用者和安装 AI
 
-**把本仓库链接交给目标机器上的 AI，并让它先读 [安装与现场使用指南](INSTALL.zh-CN.md) 和 [Agent 操作约定](AGENTS.md)。** 指南包含可直接转发的安装请求、零刻 Ultra 9 285H 的依赖命令、自动模型下载、用户启动入口和现场中英文试音步骤。
+**把本仓库链接交给目标机器上的 AI，并让它先读 [安装与现场使用指南](INSTALL.zh-CN.md) 和 [Agent 操作约定](AGENTS.md)。** 指南包含可直接转发的安装请求、Intel 显卡的依赖命令、自动模型下载、用户启动入口和现场中英文试音步骤。
 
 ```bash
 ./bin/doctor --preflight --json
@@ -127,7 +137,7 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 当前 `asr-config.json` 默认 `hotword_ctc`：只读使用同一份 SenseVoice FP32 ONNX 模型，读取模型内的 LFR / CMVN / 语言信息，使用 kaldi-native-fbank 提取特征，通过 ONNX Runtime 获取 CTC 概率，再进行热词增强的候选搜索。没有换用 PyTorch 模型，没有训练或修改已有模型文件。
 
-首批十词：Omarchy、Hyprland、Quickshell、Omacom、Quattro、Linux、Arch、mise、Neovim、Rust。初始分值分别按高 / 中 / 低设为 6 / 3 / 1，尚未经过实际录音调优；这些值是解码加分，不是出现概率。`hotwords` 和搜索参数支持热更新；模型、解码模式和线程数变更仍需重启服务。
+首批十词：Omarchy、Hyprland、Quickshell、Omacom、Quattro、Linux、Arch、mise、Neovim、Rust。分值按高 / 中 / 低设为 6 / 3 / 1，Omarchy 默认加分为 6；这些分值仍需按实际收音效果调优；这些值是解码加分，不是出现概率。`hotwords` 和搜索参数支持热更新；模型、解码模式和线程数变更仍需重启服务。
 
 搜索默认保留 4 个候选，每帧考虑 8 个高概率 token 和可延续热词的 token。按完整单词边界加分，失败的半截热词在结束时没有奖励；超过声学差距限制的候选会被剪枝，避免纯靠热词硬造文字。它能提高候选优先级，不能保证所有近音都输出指定名称，也可能增加耗时或误识别，效果由用户试用确认。
 
@@ -187,17 +197,19 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 | 字段 | 行为 |
 | --- | --- |
 | `term` | 标准术语与拼写 |
-| `aliases` | 已确认的错词，按词边界直接修复，如 `O much → Omarchy`、`hyper land → Hyprland` |
+| `aliases` | 已确认的错词，按词边界直接修复，如 `o match → Omarchy`、`hyper land → Hyprland` |
 | `context_aliases` | 需要相关上下文才修复的近音词，包括中文音译 |
 | `context` | 本句或最近三段原始识别中的相关词，如 Linux、桌面、Wayland |
 | `fuzzy` | 可选，默认关闭；有相关上下文时允许长英文术语的一处增删、替换或相邻字母颠倒 |
-| `translations` | 可选，目标语言映射，如 `{"zh":"零刻","en":"Beelink"}`；优先于翻译提示中的名称保留要求 |
+| `translations` | 可选，目标语言映射，如 `{"zh":"示例公司","en":"ExampleCorp"}`；优先于翻译提示中的名称保留要求 |
 
 默认仅为 Omarchy、Hyprland 开启相似拼写修复。不会将 `much`、`rest` 等普通词单独改成术语；多条同等规则无法确定目标时跳过。规则同时匹配原始文字，不连续猜改；代码片段、链接、邮箱、路径和长命令选项保持原样。中英文相邻时仍可匹配术语，不要求汉字间有空格。
 
-**Omarchy 强制模式（当前启用）**：按用户指定优先保证名称统一，允许误改。该条目的 `force_phonetic: true` 会绕过上下文要求和普通代码保护，强制处理已知别名、`force_patterns` 中的宽松中英文近音模式，以及合并最多三个英文词后的粗略发音键匹配。`Oh much`、`Oh, matching`、`Oh, Martin`、`how much`、`No, match`、`Oh mary`、`Or or ma`、`O mar key` 和中文音译会统一为 Omarchy；`so much`、`too much` 也会强制替换，不再保留这些普通短语；monarchy、anarchy 也已作为强制别名纳入。发音键使用字母归并和宽松编辑距离，并不是音频级发音判断；未覆盖的语言或完全不同的识别文字仍可能漏掉。强制规则优先级高于其他术语规则；保留 `raw` 与纠错记录。`preserve` 列表中的完整词优先保留，大小写不敏感；当前包括 `come`。任何跨越该词的多词近音候选也禁止替换，避免把 `I come`、`Come on` 整段吞掉。将该开关设为 false 可恢复保守行为。以上普通词和代码保护说明只适用于未启用强制模式的词条。
+**Omarchy 默认采用保守纠错**：已确认的 `o match`、`omachi` 等错词会修正为 Omarchy，`O much` 等有歧义的写法需要 Linux、桌面等相关上下文；`how much`、`so much`、`too much` 等普通表达保持原样。识别热词中 Omarchy 的加分设为 6，提高声学上合理候选的优先级，但不保证必定识别；模型若仍输出 `how much`，文字纠错会原样保留。
 
-例如 `O much 使用 Hyprlnd 作为 Linux 桌面` 会修正为 `Omarchy 使用 Hyprland 作为 Linux 桌面`。单独的 `Hyprlnd` 缺少上下文时保留，未知的近音错词也不会凭空猜测，可根据实际收音继续补充别名。SenseVoice 不使用 Whisper 式提示词；此机制在识别之后运行，翻译提示中仍保留标准名称。
+**Omarchy 强制模式（默认关闭，可按主题启用）**：按用户指定优先保证名称统一，允许误改。显式将该条目设为 `force_phonetic: true` 后，会绕过上下文要求和普通代码保护，强制处理已知别名、`force_patterns` 中的宽松中英文近音模式，以及合并最多三个英文词后的粗略发音键匹配。`Oh much`、`Oh, matching`、`Oh, Martin`、`No, match`、`Oh mary`、`Or or ma`、`O mar key` 和中文音译会统一为 Omarchy；`how much`、`so much`、`too much` 受 `preserve` 保护，开启强制模式后也会保留；monarchy、anarchy 也已作为强制别名纳入。发音键使用字母归并和宽松编辑距离，并不是音频级发音判断；未覆盖的语言或完全不同的识别文字仍可能漏掉。强制规则优先级高于其他术语规则；保留 `raw` 与纠错记录。`preserve` 列表中的完整词优先保留，大小写不敏感；当前包括 `come`、`how much`、`so much` 和 `too much`。任何跨越该词的多词近音候选也禁止替换，避免把 `I come`、`Come on` 或常见短语整段吞掉。默认 `force_phonetic: false`；只在确认可接受误改的专门话题中开启。以上普通词和代码保护说明只适用于未启用强制模式的词条。
+
+例如 `O much 使用 Hyprlnd 作为 Linux 桌面` 会修正为 `Omarchy 使用 Hyprland 作为 Linux 桌面`。单独的 `Hyprlnd`、`O much` 或中文音译缺少上下文时保留，未知的近音错词也不会凭空猜测，可根据实际收音继续补充别名。SenseVoice 不使用 Whisper 式提示词；此机制在识别之后运行，翻译提示中仍保留标准名称。
 
 ### 现场调整与主题配置
 
@@ -207,15 +219,15 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 现场按问题出现的层次修改，无需停止收音、重新编译或重载模型：
 
-1. **听错名称**：修改 `asr-config.json` 的 `hotwords`，如添加 `{"term":"Beelink","score":3}`。热词目前只支持 3–32 位纯英文字母、大小写不敏感且不能重复，分值范围 `(0, 8]`，最多 128 项。`285H`、`37signals` 和中文名称不能直接放入此表，可在下一层映射。
-2. **识别文字总出现同一种错词**：在 `glossary.json` 对应术语的 `aliases` 中补充确认过的错词。例如下面的条目将“零刻”“bee link”归一到 `Beelink`；避免添加可能在正常对话出现的宽泛别名。
+1. **听错名称**：修改 `asr-config.json` 的 `hotwords`，如添加 `{"term":"ExampleCorp","score":3}`。热词目前只支持 3–32 位纯英文字母、大小写不敏感且不能重复，分值范围 `(0, 8]`，最多 128 项。`RTX4090`、`37signals` 和中文名称不能直接放入此表，可在下一层映射。
+2. **识别文字总出现同一种错词**：在 `glossary.json` 对应术语的 `aliases` 中补充确认过的错词。例如下面的条目将“示例公司”“example corp”归一到 `ExampleCorp`；避免添加可能在正常对话出现的宽泛别名。
 3. **识别正确、翻译用词不对**：修改该条目的 `translations.zh` / `translations.en`。这会进入后续翻译请求的术语提示，不直接替换整段译文；实际效果仍需试译验证。
 
 ```json
 {
-  "term": "Beelink",
-  "aliases": ["零刻", "bee link"],
-  "translations": {"zh": "零刻", "en": "Beelink"}
+  "term": "ExampleCorp",
+  "aliases": ["示例公司", "example corp"],
+  "translations": {"zh": "示例公司", "en": "ExampleCorp"}
 }
 ```
 
@@ -228,9 +240,9 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 为不同主题准备独立目录，目录中同时放置 `glossary.json` 和 `asr-config.json`。例如先复制当前规则，再针对硬件讨论编辑：
 
 ```bash
-mkdir -p topics/beelink
-cp glossary.json asr-config.json topics/beelink/
-LIVE_SUB_CONFIG_DIR="$PWD/topics/beelink" ./bin/start
+mkdir -p topics/hardware
+cp glossary.json asr-config.json topics/hardware/
+LIVE_SUB_CONFIG_DIR="$PWD/topics/hardware" ./bin/start
 ```
 
 首次切换目录、或从旧服务升级时，先停止收音、等待任务完成并导出，再执行 `./bin/models-stop` 后按上述命令启动。启动器会拒绝复用其他配置目录的旧识别服务；同一目录中的文件内容之后可持续热更新。`topics/` 默认不纳入 Git，可由现场人员备份、分享完整主题目录。

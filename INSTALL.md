@@ -2,7 +2,7 @@
 
 **English** | [简体中文](INSTALL.zh-CN.md) · [Back to README](README.md)
 
-This guide targets an x86_64 Omarchy / Arch Linux desktop with a microphone. The primary handoff machine is a Beelink Intel Core Ultra 9 285H with Intel integrated graphics. Other hardware needs separate driver and performance checks. Defaults are CPU recognition and Vulkan translation; no NPU is required.
+This guide targets an x86_64 Omarchy / Arch Linux desktop with a microphone. The verified hardware configuration is an Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work, but have not been verified; check the appropriate drivers and test performance on your machine. Defaults are CPU recognition and Vulkan translation; no NPU is required.
 
 This is a source checkout installation, without creating an Arch package. Agents should also read [AGENTS.md](AGENTS.md), run as the logged-in desktop user, and report failures and untested steps accurately.
 
@@ -21,7 +21,7 @@ A web-only chat assistant can guide you through these steps, but cannot execute 
 - First setup needs GitHub, Hugging Face, and PyPI access. Models total about 2.85 GB, plus dependencies and source code. Recognition and translation can run offline afterward.
 - A microphone. Speakers are optional: the app displays text and does not play translated speech.
 
-Use sudo only for system prerequisites. Never run setup, pip, or the app as root. For an Intel machine, install missing packages with:
+Use sudo only for system prerequisites. Never run setup, pip, or the app as root. For Intel integrated graphics, install missing packages with:
 
 ```bash
 sudo pacman -S --needed base-devel git cmake python python-pip qt6-base qt6-declarative qt6-wayland qt6-svg ffmpeg libpulse libnotify mesa vulkan-intel vulkan-icd-loader vulkan-tools shaderc
@@ -81,7 +81,7 @@ From a terminal in the same desktop session:
 Have the desktop user complete these checks and report which remain untested:
 
 1. Select the physical microphone in settings, avoiding monitor/system playback sources. Try both English and Simplified Chinese UI and check readability.
-2. Start captions and speak an English sentence and a Chinese sentence at the intended distance and volume. Pause, then confirm the original on the left and translation on the right, in the correct direction. Try a realistic sentence containing names such as Omarchy, Beelink, or Hyprland.
+2. Start captions and speak an English sentence and a Chinese sentence at the intended distance and volume. Pause, then confirm the original on the left and translation on the right, in the correct direction. Try a realistic sentence containing names such as Omarchy, Linux, or Hyprland.
 3. Confirm stopping releases capture and queued work finishes. Try fullscreen and the bottom font-size controls. Check readability in light and dark themes.
 4. Export any captions needed. Once capture is stopped, closing requires no second confirmation; pending tasks drain before exit. Unexported captions are not saved automatically.
 
@@ -93,7 +93,7 @@ Finish installation and a microphone trial before the actual conversation. Pause
 - Vocabulary has three layers: recognition hotwords, corrections after recognition, and translation mappings. See [vocabulary tuning](README.md#make-it-understand-your-topic) or the [extended Chinese reference](README.zh-CN.md#现场调整与主题配置).
 - **Open Agent to discuss vocabulary** in settings opens your configured Omarchy agent with configuration paths and format guidance, in the selected UI language. The agent must be installed and configured under Omarchy's Setup → Defaults → Agent. Missing an agent does not prevent captions.
 - The agent provider may use online services. The app does not automatically add captions, recordings, or logs to its prompt; decide what examples you want to share manually.
-- The glossary's default aggressive Omarchy rule may rewrite ordinary phrases. Check `raw` and correction records. Retain the `come` protection and discuss policy changes with the person using the app.
+- The default Omarchy glossary uses conservative correction and preserves ordinary phrases such as “how much.” Aggressive `force_phonetic` matching is opt-in for specialized topics and can overcorrect. Check `raw` and correction records, retain the `come` protection, and discuss policy changes with the person using the app.
 - Valid vocabulary edits reload during use; invalid edits retain the running process's last valid configuration. Changing decoder/thread settings or the configuration directory requires stopping and restarting project model services. Completed captions are not rewritten.
 - Exports from this checkout are saved in `sessions/`. Logs in `runtime/logs/` may also contain recognition text. Keep real conversation data out of Git and public bug reports.
 
@@ -103,7 +103,7 @@ Finish installation and a microphone trial before the actual conversation. Pause
 | --- | --- |
 | Download failure / timeout | Check the failing host, fix connectivity, and rerun the same command. Keep `.part` files for resume; valid completed models are reused. Keep checksum verification enabled. |
 | Unsupported Python version or wheel | Use Python 3.12–3.14 for the project environments. Do not replace the system Python symlink or use `sudo pip`. |
-| Vulkan unavailable | Check Intel drivers and `vulkaninfo --summary`. A hardware device must be visible; llvmpipe/lavapipe software devices do not establish GPU readiness. Use the explicit CPU fallback below if needed. |
+| Vulkan unavailable | Check the drivers for your GPU and `vulkaninfo --summary`. A hardware device must be visible; llvmpipe/lavapipe software devices do not establish GPU readiness. Use the explicit CPU fallback below if needed. |
 | Missing microphone / Pulse connection refused | Run in the logged-in desktop user's terminal. Check the physical connection and `pactl -f json list sources`. Missing access in SSH, a container, or a sandbox does not prove a host fault. |
 | Window does not appear | Check `runtime/logs/ui.log`, desktop-session environment, and Qt Wayland dependencies. Demo mode checks the UI only. |
 | Model startup fails | Check `runtime/logs/supervisor.log`, `asr.log`, and `translation.log`. Preserve the specific error; do not silently switch models. |
