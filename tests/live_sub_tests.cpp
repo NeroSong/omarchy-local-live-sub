@@ -21,6 +21,19 @@ class LiveSubTests : public QObject {
         for (int i = 0; i < data.size(); i += 2) qToLittleEndian<qint16>((i % 4) ? -5000 : 5000, data.data() + i);
         return data;
     }
+    bool loadForcedTerms(Terms &terms, QString &error) {
+        QFile source(QFINDTESTDATA("../glossary.json"));
+        if (!source.open(QIODevice::ReadOnly)) return false;
+        auto entries = QJsonDocument::fromJson(source.readAll()).array();
+        auto omarchy = entries.first().toObject();
+        omarchy["force_phonetic"] = true;
+        entries[0] = omarchy;
+        QTemporaryDir dir;
+        QFile fixture(dir.filePath("forced.json"));
+        if (!fixture.open(QIODevice::WriteOnly)) return false;
+        fixture.write(QJsonDocument(entries).toJson()); fixture.close();
+        return terms.load(fixture.fileName(), error);
+    }
 private slots:
     void themeFollowsAtomicLightDarkSwitchAndKeepsCaptionsReadable() {
         QTemporaryDir dir;
@@ -295,7 +308,7 @@ private slots:
         QCOMPARE(corrected.corrections.first().toMap().value("from").toString(), QString("O much"));
         QCOMPARE(corrected.corrections.first().toMap().value("to").toString(), QString("Omarchy"));
         QCOMPARE(terms.correct("欧马奇的桌面使用海普兰德。").text, QString("Omarchy的桌面使用Hyprland。"));
-        QCOMPARE(terms.correct("Hyprlnd 和欧马奇").text, QString("Hyprlnd 和Omarchy"));
+        QCOMPARE(terms.correct("Hyprlnd 和欧马奇").text, QString("Hyprlnd 和欧马奇"));
         QCOMPARE(terms.correct("Hyprlnad", "Wayland compositor").text, QString("Hyprland"));
     }
     void glossaryPreservesCodePathsAndOrdinaryWords() {
@@ -317,9 +330,65 @@ private slots:
         Terms terms; QString error; QVERIFY(terms.load(file.fileName(), error));
         QCOMPARE(terms.correct("abcqefg", "Linux").text, QString("abcqefg"));
     }
-    void omarchyForceModeNeedsNoContextAndPreservesFollowingWords() {
+    void defaultOmarchyRulesPreserveOrdinarySpeechWithAndWithoutContext() {
         Terms terms; QString error;
         QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        for (const auto &context : {QString(), QString("Linux desktop Omarchy")}) {
+            for (const auto &text : {"How much does it cost?", "HOW MUCH is enough?", "I love how much it helps.",
+                     "Thank you so much.", "That is too much.", "No, match the colors.",
+                     "Oh, Mary is here.", "monarchy and anarchy", "Come on.", "I come here.",
+                     "come", "COME", "Please come back."}) {
+                const auto corrected = terms.correct(text, context);
+                QCOMPARE(corrected.text, QString(text));
+                QVERIFY(corrected.corrections.isEmpty());
+            }
+        }
+        QCOMPARE(terms.correct("O much is great.").text, QString("O much is great."));
+        QCOMPARE(terms.correct("Ohmarchy is great.").text, QString("Omarchy is great."));
+        QCOMPARE(terms.correct("O much is great.", "Linux desktop").text, QString("Omarchy is great."));
+    }
+    void reportedOmarchyAliasesWorkWithoutRewritingCommonPhrases() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        for (const auto &context : {QString(), QString("Linux desktop")}) {
+            QCOMPARE(terms.correct("o match", context).text, QString("Omarchy"));
+            QCOMPARE(terms.correct("omachi", context).text, QString("Omarchy"));
+            QCOMPARE(terms.correct("O MATCH and OMACHI.", context).text, QString("Omarchy and Omarchy."));
+            const auto mixed = terms.correct("How much does o match cost? I like omachi so much.", context);
+            QCOMPARE(mixed.text, QString("How much does Omarchy cost? I like Omarchy so much."));
+            QCOMPARE(mixed.corrections.size(), 2);
+            QCOMPARE(terms.correct("Come to omachi; that is too much.", context).text,
+                QString("Come to Omarchy; that is too much."));
+            const QString protectedText = "`o match` /tmp/omachi https://example.com/omachi omachine";
+            QCOMPARE(terms.correct(protectedText, context).text, protectedText);
+        }
+    }
+    void screenshotOmarchyAliasesAreCorrectedWithoutSwallowingSurroundingWords() {
+        Terms terms; QString error;
+        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        const QList<QPair<QString, QString>> examples{
+            {"Oh much is amazing.", "Omarchy is amazing."},
+            {"嗯，我很喜欢我match这个系统。", "嗯，我很喜欢Omarchy这个系统。"},
+            {"我很好奇我marcha未来会不会退出手机版。", "我很好奇Omarchy未来会不会退出手机版。"},
+            {"这个世界不能缺少么 much。", "这个世界不能缺少Omarchy。"}
+        };
+        for (const auto &example : examples) {
+            const auto result = terms.correct(example.first);
+            QCOMPARE(result.text, example.second);
+            QCOMPARE(result.corrections.size(), 1);
+        }
+        for (const auto &text : {"Actually, I love so much.", "As a system, I really love how much.",
+                "How much do you like Omarchy?", "Come on, that is too much."}) {
+            const auto result = terms.correct(text, "Linux desktop Omarchy");
+            QCOMPARE(result.text, QString(text));
+            QVERIFY(result.corrections.isEmpty());
+        }
+        const QString code = "`Oh much` /tmp/我marcha https://example.com/我match";
+        QCOMPARE(terms.correct(code).text, code);
+    }
+    void omarchyForceModeNeedsNoContextAndPreservesFollowingWords() {
+        Terms terms; QString error;
+        QVERIFY(loadForcedTerms(terms, error));
         QCOMPARE(terms.correct("Oh, matching is great. Oh, Martin is a great sister. Oh much is great.").text,
             QString("Omarchy is great. Omarchy is a great sister. Omarchy is great."));
         QCOMPARE(terms.correct("O mar key is great. Oh my key is great.").text,
@@ -330,12 +399,12 @@ private slots:
         QCOMPARE(terms.correct("Omarchy is great.").text, QString("Omarchy is great."));
         QVERIFY(!terms.correct("Oh, Martin").corrections.isEmpty());
         QCOMPARE(terms.correct("No, match is great. I love how much. As the system how much is great. Oh mary. Or or ma.").text,
-            QString("Omarchy is great. I love Omarchy. As the system Omarchy is great. Omarchy. Omarchy."));
-        QCOMPARE(terms.correct("so much and too much").text, QString("Omarchy and Omarchy"));
+            QString("Omarchy is great. I love how much. As the system how much is great. Omarchy. Omarchy."));
+        QCOMPARE(terms.correct("so much and too much").text, QString("so much and too much"));
     }
     void comeIsExemptEvenInsideForcedMultiwordCandidates() {
         Terms terms; QString error;
-        QVERIFY(terms.load(QFINDTESTDATA("../glossary.json"), error));
+        QVERIFY(loadForcedTerms(terms, error));
         for (const auto &text : {"Come on.", "I come here.", "come", "COME", "Please come back."})
             QCOMPARE(terms.correct(text).text, QString(text));
         QCOMPARE(terms.correct("Come to O much. Oh much is great.").text,
