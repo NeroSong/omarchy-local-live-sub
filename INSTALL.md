@@ -1,35 +1,37 @@
-# 安装与现场使用 / Installation handoff
+# Installation and on-site use
 
-适用对象：零刻（Beelink）Intel Core Ultra 9 285H、Intel 集成显卡、带麦克风的 x86_64 Omarchy / Arch Linux 主机。其他设备需单独确认驱动；不依赖 NPU。以下默认使用 Vulkan 翻译、CPU 识别。
+**English** | [简体中文](INSTALL.zh-CN.md) · [Back to README](README.md)
 
-This guide is also the installation contract for an AI agent. Read `AGENTS.md` and `README.md`, run commands as the logged-in desktop user, and report failures accurately. The application supports Chinese and English UI and speech. This is a source checkout installation, without creating an Arch package.
+This guide targets an x86_64 Omarchy / Arch Linux desktop with a microphone. The primary handoff machine is a Beelink Intel Core Ultra 9 285H with Intel integrated graphics. Other hardware needs separate driver and performance checks. Defaults are CPU recognition and Vulkan translation; no NPU is required.
 
-## 发给 AI 的话 / Prompt to give your AI
+This is a source checkout installation, without creating an Arch package. Agents should also read [AGENTS.md](AGENTS.md), run as the logged-in desktop user, and report failures and untested steps accurately.
 
-把仓库链接和下面这段话发给目标机器上的 AI 即可：
+## Ask your AI to install it
 
-> 请在这台零刻 Ultra 9 285H 的 Omarchy 主机上安装和启动 https://github.com/NeroSong/omarchy-local-live-sub 。先阅读仓库 README.md、INSTALL.md 和 AGENTS.md，按说明安装缺少的依赖，使用默认 Vulkan 模式，添加当前用户的应用启动入口。模型不存在时由脚本下载并校验，不依赖本机装有 Voxtype。不要修改系统语音输入、默认音频设备或全局桌面配置。先完成诊断，再打开真实字幕窗口让我选择麦克风并试说中英文；不要把演示模式或健康检查当作试音成功。如果失败，请报告具体阶段、错误和下一步。
+Give a terminal-capable agent the repository link and this prompt:
 
-目标机器上的 AI 需要能执行终端命令；只有网页聊天的 AI 可按本页逐步指导操作。
+> Install and launch https://github.com/NeroSong/omarchy-local-live-sub on this Omarchy machine. Read README.md, INSTALL.md, and AGENTS.md first. Inspect the checkout and preserve local changes, vocabulary, and sessions. Run preflight, resolve missing prerequisites, use default Vulkan translation if supported, and add the current user's launcher entry. Use the scripts to download and verify missing models; do not assume Voxtype is installed. Preserve existing speech input, default audio devices, and desktop settings. Open the real caption window so I can select a microphone and try English and Chinese speech. Do not treat demo mode or healthy services as microphone acceptance. If anything fails, report the stage, error, log path, and next step.
 
-## 1. 系统准备 / Prerequisites
+A web-only chat assistant can guide you through these steps, but cannot execute them on your desktop.
 
-- x86_64 Omarchy / Arch Linux，Python **3.12–3.14**，能进入当前用户的桌面会话。
-- 内存建议 32 GB，至少预留 16 GB；安装前建议有 20 GB 空闲磁盘。实际占用随构建缓存变化。
-- 首次准备需要访问 GitHub、Hugging Face、PyPI，下载模型约 2.85 GB，另外还需依赖和源码。准备完成后，字幕识别和翻译可离线运行。
-- 内置扬声器不是必要条件：当前应用只显示字幕，没有译文语音播放。
+## 1. Prerequisites
 
-只为系统依赖使用 sudo；不要使用 `sudo ./bin/setup` 或以 root 启动应用。Intel 设备安装缺少的包：
+- x86_64 Omarchy / Arch Linux, Python **3.12–3.14**, and access to the current user's desktop session.
+- 32 GB RAM recommended, at least 16 GB; allow 20 GB free disk space before setup. Build caches affect actual usage.
+- First setup needs GitHub, Hugging Face, and PyPI access. Models total about 2.85 GB, plus dependencies and source code. Recognition and translation can run offline afterward.
+- A microphone. Speakers are optional: the app displays text and does not play translated speech.
+
+Use sudo only for system prerequisites. Never run setup, pip, or the app as root. For an Intel machine, install missing packages with:
 
 ```bash
 sudo pacman -S --needed base-devel git cmake python python-pip qt6-base qt6-declarative qt6-wayland qt6-svg ffmpeg libpulse libnotify mesa vulkan-intel vulkan-icd-loader vulkan-tools shaderc
 ```
 
-不要为本应用调整 Voxtype、Fcitx/Rime、PipeWire 配置、默认音频源、系统服务或全局快捷键。若 pacman 报版本、镜像或数据库问题，先说明具体错误并按这台 Omarchy 的维护方式处理，不要用单独 `pacman -Sy` 制造部分升级。
+Keep Voxtype, Fcitx/Rime, PipeWire, default audio sources, system services, and global shortcuts unchanged. If pacman reports version, mirror, or database errors, resolve them using the machine's Omarchy maintenance process. Do not use a standalone `pacman -Sy`, which can leave a partial upgrade.
 
-## 2. 获取与准备 / Prepare the checkout
+## 2. Prepare the checkout
 
-选择长期保留的位置。公开仓库可直接 HTTPS 克隆，无需 GitHub 账号：
+Choose a directory you will keep. Public HTTPS cloning does not require a GitHub account:
 
 ```bash
 mkdir -p ~/Work
@@ -37,73 +39,81 @@ cd ~/Work
 git clone https://github.com/NeroSong/omarchy-local-live-sub.git
 cd omarchy-local-live-sub
 ./bin/doctor --preflight --json
+```
+
+Resolve preflight errors before continuing:
+
+```bash
 ./bin/setup --desktop
 ```
 
-已有检出时先查看本地修改；不要覆盖现场词表、字幕或未提交内容，也不要重复克隆到嵌套目录。`setup` 会检查依赖、准备模型、创建项目独立 Python 环境、编译推理引擎和应用、运行本地测试，最后创建当前用户的桌面入口。它不会安装系统包或创建安装包。开发时可省略 `--desktop`。
+For an existing checkout, inspect local changes first; preserve vocabulary and captions, and avoid cloning another copy inside it. Setup checks prerequisites, prepares models and isolated Python environments, builds the inference engine and app locally, runs tests, and creates a launcher entry for the current user. It does not install system packages or create an Arch package. Omit `--desktop` for development-only use.
 
-**模型来源和安全恢复：**
+### Models and safe recovery
 
-- 默认识别模型是锁定版本的 [SenseVoice FP32](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17)，翻译模型是 [Hy-MT2-1.8B Q8_0](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF)。提交、文件、大小和 SHA256 在 `dependencies.lock.json` 中。
-- 模型不存在时自动下载到 `models/`。完整的项目内识别模型优先；其次只读复用 Voxtype 同名模型，并校验内容。没有 Voxtype 不影响安装。
-- 如果现有 Voxtype 模型与锁定版本不同，保留它，运行 `./bin/setup --desktop --download-asr` 下载项目独立模型。若设置过 `SENSEVOICE_MODEL_DIR`，先明确检查并取消该覆盖；脚本不会往其目录下载。
-- 下载中断后重新执行原命令，会尝试续传 `.part`；服务器不支持续传则重新下载该文件。完整模型校验通过才替换最终文件；已校验模型不会再次下载。SHA256 不一致时停止，不得跳过校验、随意替换量化版本或使用来源不明的镜像。
-- 网络受限时保留错误和进度，由机器使用者配置可用网络/代理后重试；不需要为公开模型提供令牌。不要把代理密码或其他凭据写入仓库。
+- Recognition uses pinned [SenseVoice FP32](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17); translation uses [Hy-MT2-1.8B Q8_0](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF). Revisions, filenames, sizes, and SHA256 checksums are in [dependencies.lock.json](dependencies.lock.json).
+- Missing models download to `models/`. A complete project-local recognition model takes priority. Otherwise, an existing Voxtype model can be verified and reused read-only. Voxtype is not required.
+- If Voxtype's model differs from the pinned version, preserve it and run `./bin/setup --desktop --download-asr` to prepare a separate project model. If `SENSEVOICE_MODEL_DIR` is set, inspect and unset that override first; scripts do not download into that external directory.
+- Rerun the same command after an interrupted download. Scripts attempt to resume `.part` files; a server without resume support requires that file to restart. Files become final only after checksum verification, and valid cached models are not downloaded again. Stop on checksum mismatches; do not bypass checks or substitute another quantization or an unknown mirror.
+- For network failures, keep the error and progress, fix connectivity or the proxy, and retry. Public models require no token. Keep proxy passwords and other credentials out of the repository.
 
-若只需提前准备模型，使用 `./bin/bootstrap --models-only`，无需编译。完整准备仍需执行 `setup`。
+To prepare only models in advance, run `./bin/bootstrap --models-only`. Full setup is still required later.
 
-用户入口指向当前检出目录的 `bin/start`；保留这个目录。移动后在新位置重新运行 `./bin/setup --desktop`。不应复制其他机器的虚拟环境或本机 CPU 优化过的二进制；应在目标机器编译。
+The user launcher points to this checkout's `bin/start`. Keep the directory; after moving it, rerun `./bin/setup --desktop` at the new location. Build on the target machine rather than copying another CPU's optimized binaries or Python environments.
 
-## 3. 启动与验收 / Start and accept
+## 3. Start and verify
 
 ```bash
 ./bin/start --settings
 ```
 
-也可从应用启动器搜索 **Omarchy Local Live Sub / 本地双语字幕**。首次加载模型需要等待。启动器退出后模型服务保留，下次打开可复用。
+Alternatively, search the launcher for **Omarchy Local Live Sub / 本地双语字幕**. Initial model loading takes time. Closing the window leaves model services available for reuse.
 
-在同一桌面用户的终端检查：
+From a terminal in the same desktop session:
 
 ```bash
 ./bin/doctor --services --json
 ./bin/smoke-test --json
 ```
 
-`doctor` 检查依赖、模型文件、麦克风枚举和服务；需要重新核对已有文件散列时加 `--verify-models`（只读取文件，不重新下载）。`smoke-test` 用合成静音请求识别，再用两句公开例句请求中英互译，不录麦克风、不下载模型。它能验证推理接口，不能验证现场语音质量。
+`doctor` checks dependencies, model files, microphone enumeration, and services. Add `--verify-models` to reread and verify existing model hashes without downloading them. `smoke-test` sends synthetic silence to recognition and two public example sentences to translation. It does not record the microphone or download models. These checks validate inference endpoints, not speech quality in the room.
 
-请让使用者完成下面的实际试用，AI 应报告哪些已完成、哪些待使用者确认：
+Have the desktop user complete these checks and report which remain untested:
 
-1. 在设置选择实际麦克风；不要选择音响的 monitor / 系统回放。切换界面语言为 English 或简体中文，确认设置和提示可读。
-2. 点击“开始字幕”，以实际距离、实际音量分别说一句英文和中文，停顿后确认左侧原文和右侧译文都出现且方向正确。再试一句包含 Omarchy、Beelink、Hyprland 的真实讨论内容。
-3. 确认停止后不再收音，队列完成；全屏及底部字号 − / + 可用。确认深浅主题下字幕清晰。
-4. 导出一次所需字幕；停止收音后关闭窗口无需二次确认。未主动导出的内容不会自动保存；停止后还有任务时，关闭会等待处理结束。
+1. Select the physical microphone in settings, avoiding monitor/system playback sources. Try both English and Simplified Chinese UI and check readability.
+2. Start captions and speak an English sentence and a Chinese sentence at the intended distance and volume. Pause, then confirm the original on the left and translation on the right, in the correct direction. Try a realistic sentence containing names such as Omarchy, Beelink, or Hyprland.
+3. Confirm stopping releases capture and queued work finishes. Try fullscreen and the bottom font-size controls. Check readability in light and dark themes.
+4. Export any captions needed. Once capture is stopped, closing requires no second confirmation; pending tasks drain before exit. Unexported captions are not saved automatically.
 
-请提前完成安装和麦克风试用，再进入正式沟通。应用目前用能量门限断句；多人同时说话、回声、远距离和噪声会影响结果。调整收音门限、靠近麦克风和轮流说话后再比较，不应只凭静音测试宣布现场验收成功。
+Finish installation and a microphone trial before the actual conversation. Pause detection uses an energy threshold. Overlapping voices, echo, distance, and noise affect results; adjust the app's capture threshold, move closer to the microphone, and take turns speaking before comparing results.
 
-## 4. 现场使用 / On site
+## 4. During a conversation
 
-- 说话语言默认 Auto，也可固定英语/中文；这与界面语言独立。
-- 词表有识别热词、识别后纠错和翻译映射三层。设置里的“打开 Agent 沟通词表”会把配置路径和格式交给 Omarchy 默认 Agent，语言跟随当前界面选择。详见 README 的“现场调整与主题配置”。
-- 此按钮要求 Omarchy 默认 Agent 已安装、已配置；缺少 Agent 不影响字幕运行。Agent 的提供方可能联网，应用不会主动将字幕、录音或日志放入提示。若用户手工提供例句，应自行决定是否分享。
-- `glossary.json` 中 Omarchy 强制近音规则有意较激进，可能把普通短语改成 Omarchy；需查看 `raw` 和纠错记录确认。`come` 的保留规则应继续保留，未经现场使用者决定不要改动这项策略。
-- 词表有效修改会热更新；无效修改保留进程内上一份有效配置。修改解码模式/线程数或切换整个配置目录需要停止并重启项目模型服务。已完成字幕不会被追溯重写。
-- 字幕只在主动导出后写入 `sessions/`；`runtime/logs/` 也可能包含识别文字。不要上传真实会议数据到 Git 或排错帖子。
+- Speech language defaults to Auto, with fixed English and Chinese options. UI language is independent.
+- Vocabulary has three layers: recognition hotwords, corrections after recognition, and translation mappings. See [vocabulary tuning](README.md#make-it-understand-your-topic) or the [extended Chinese reference](README.zh-CN.md#现场调整与主题配置).
+- **Open Agent to discuss vocabulary** in settings opens your configured Omarchy agent with configuration paths and format guidance, in the selected UI language. The agent must be installed and configured under Omarchy's Setup → Defaults → Agent. Missing an agent does not prevent captions.
+- The agent provider may use online services. The app does not automatically add captions, recordings, or logs to its prompt; decide what examples you want to share manually.
+- The glossary's default aggressive Omarchy rule may rewrite ordinary phrases. Check `raw` and correction records. Retain the `come` protection and discuss policy changes with the person using the app.
+- Valid vocabulary edits reload during use; invalid edits retain the running process's last valid configuration. Changing decoder/thread settings or the configuration directory requires stopping and restarting project model services. Completed captions are not rewritten.
+- Exports from this checkout are saved in `sessions/`. Logs in `runtime/logs/` may also contain recognition text. Keep real conversation data out of Git and public bug reports.
 
-## 5. 排查与回退 / Troubleshooting
+## 5. Troubleshooting
 
-| 现象 | 处理 |
+| Symptom | What to check |
 | --- | --- |
-| 下载失败/连接超时 | 查看报错的站点，修复网络后重跑原命令；已完成模型不重下，保留 `.part` 可续传。不要关闭校验。 |
-| Python 版本或 wheel 不支持 | 使用 Python 3.12–3.14 创建本项目环境；不要修改系统 Python 链接或使用 `sudo pip`。 |
-| Vulkan 不可用 | 检查 Intel 驱动和 `vulkaninfo --summary`，确认硬件设备可见；不要将 llvmpipe/lavapipe 软件设备当作 GPU。需要时采用下方显式 CPU 回退。 |
-| 没有麦克风/Pulse connection refused | 在当前登录桌面用户的终端运行，确认物理麦克风已连接及 `pactl -f json list sources` 可见；SSH、容器或沙箱不可见不能直接证明主机故障。 |
-| 窗口未出现 | 查看 `runtime/logs/ui.log`，核对桌面会话环境与 Qt Wayland 依赖。`--demo` 只能检查界面。 |
-| 模型启动失败 | 查看 `runtime/logs/supervisor.log`、`asr.log`、`translation.log`；保留具体错误，不静默换模型。 |
-| 8178/8179 端口占用 | `./bin/start --status` 检查归属。仅 `./bin/models-stop` 停止当前项目管理的服务；其他程序需要先确认归属，不能 `pkill` 所有 Python/llama 进程。 |
-| 配置目录不一致/旧服务 | 停止收音、等待并导出，然后 `./bin/models-stop`，再 `./bin/start`。切换主题词表目录时设置相同的 `LIVE_SUB_CONFIG_DIR`。 |
-| 术语修改未生效 | 检查设置中的词表版本/错误和识别服务健康信息；保证两个 JSON 文件完整合法，再用新的一句话验证。 |
+| Download failure / timeout | Check the failing host, fix connectivity, and rerun the same command. Keep `.part` files for resume; valid completed models are reused. Keep checksum verification enabled. |
+| Unsupported Python version or wheel | Use Python 3.12–3.14 for the project environments. Do not replace the system Python symlink or use `sudo pip`. |
+| Vulkan unavailable | Check Intel drivers and `vulkaninfo --summary`. A hardware device must be visible; llvmpipe/lavapipe software devices do not establish GPU readiness. Use the explicit CPU fallback below if needed. |
+| Missing microphone / Pulse connection refused | Run in the logged-in desktop user's terminal. Check the physical connection and `pactl -f json list sources`. Missing access in SSH, a container, or a sandbox does not prove a host fault. |
+| Window does not appear | Check `runtime/logs/ui.log`, desktop-session environment, and Qt Wayland dependencies. Demo mode checks the UI only. |
+| Model startup fails | Check `runtime/logs/supervisor.log`, `asr.log`, and `translation.log`. Preserve the specific error; do not silently switch models. |
+| Ports 8178/8179 occupied | Check ownership with `./bin/start --status`. Use `./bin/models-stop` only for matching project-managed services. Do not broadly kill Python or llama processes. |
+| Configuration-directory mismatch / old service | Stop capture, wait, export, run `./bin/models-stop`, then start again. Use the same `LIVE_SUB_CONFIG_DIR` for the selected topic. |
+| Vocabulary edit has no effect | Check vocabulary revisions/errors in settings and recognition-service health. Save complete, valid JSON and test with a new utterance. |
 
-显式 CPU 回退：先停止收音、等待队列完成并导出，再执行：
+### Explicit CPU fallback
+
+Stop capture, wait for queued work, and export anything needed, then run:
 
 ```bash
 ./bin/models-stop
@@ -111,6 +121,22 @@ cd omarchy-local-live-sub
 ./bin/start
 ```
 
-这会把翻译引擎重新构建为 CPU 模式并记录选择，速度需要重新试用。`bin/start` 没有 `--cpu` 选项；若只是临时禁用已构建 Vulkan 引擎的 GPU，可另开终端运行 `./bin/models-start --cpu`，待就绪后再启动应用。不要在原有字幕任务进行中切换。
+This rebuilds translation for CPU and records the selection. Test performance again. `bin/start` has no `--cpu` option. To temporarily disable GPU use with an already-built Vulkan engine, instead run `./bin/models-start --cpu` in another terminal after stopping the previous services, wait for readiness, then open the app. Do not switch during an active caption session.
 
-无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不停止常驻模型。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；删除项目前先备份词表、`topics/` 和所需字幕。
+### Decoder fallback
+
+The default `hotword_ctc` decoder is experimental. To explicitly try the previous sherpa-onnx recognition path, stop capture, wait for pending work, export, and run:
+
+```bash
+./bin/models-stop
+# Wait for the previous model services to exit.
+./bin/models-start --decoder greedy
+```
+
+Once both models are ready, run `./bin/run` in another terminal. Use `--decoder hotword_ctc` to return to the hotword path after stopping services again. The health response reports the actual decoder; failures never silently select a different recognizer.
+
+## 6. Stop or remove
+
+Use `./bin/models-stop` when you no longer need the models in memory. Closing the caption window alone leaves them running. Stop capture, drain queued work, and export first.
+
+To remove the user launcher, delete `~/.local/share/applications/live-sub.desktop` (or its equivalent under a custom `XDG_DATA_HOME`). Before deleting the checkout, back up `glossary.json`, `asr-config.json`, `topics/`, and any needed captions.
