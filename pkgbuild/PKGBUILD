@@ -20,7 +20,7 @@ package() {
   cd "$startdir/.."
   install -Dm755 build/live-sub "$pkgdir/usr/lib/live-sub/live-sub"
   install -Dm755 bin/live-sub-launch "$pkgdir/usr/bin/live-sub"
-  install -Dm755 bin/live-sub-launch "$pkgdir/usr/bin/live-sub-launch"
+  ln -s live-sub "$pkgdir/usr/bin/live-sub-launch"
   install -dm755 "$pkgdir/usr/share/live-sub/bin"
   for script in start run models-start models-stop bootstrap setup doctor sensevoice-server smoke-test; do
     install -m755 "bin/$script" "$pkgdir/usr/share/live-sub/bin/$script"
