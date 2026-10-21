@@ -2,7 +2,7 @@
 
 **English** | [简体中文](INSTALL.zh-CN.md) · [Back to README](README.md)
 
-This guide targets an x86_64 Omarchy / Arch Linux desktop with a microphone. The verified hardware configuration is an Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work, but have not been verified; check the appropriate drivers and test performance on your machine. Defaults are CPU recognition and Vulkan translation; no NPU is required.
+This guide targets an x86_64 Omarchy / Arch Linux desktop with a microphone. Verified hardware: an Intel Core Ultra 9 285H, and an Intel Core i7-1260P (Iris Xe, 16 GB RAM), both with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work, but have not been verified; check the appropriate drivers and test performance on your machine. Defaults are CPU recognition and Vulkan translation; no NPU is required.
 
 This is a source checkout installation, without creating an Arch package. Agents should also read [AGENTS.md](AGENTS.md), run as the logged-in desktop user, and report failures and untested steps accurately.
 
@@ -17,7 +17,7 @@ A web-only chat assistant can guide you through these steps, but cannot execute 
 ## 1. Prerequisites
 
 - x86_64 Omarchy / Arch Linux, Python **3.12–3.14**, and access to the current user's desktop session.
-- 32 GB RAM recommended, at least 16 GB; allow 20 GB free disk space before setup. Build caches affect actual usage.
+- 16 GB RAM is enough (verified on a 16 GB laptop); allow about 10 GB free disk space before setup. Build caches affect actual usage.
 - First setup needs GitHub, Hugging Face, and PyPI access. Models total about 2.85 GB, plus dependencies and source code. Recognition and translation can run offline afterward.
 - A microphone. Speakers are optional: the app displays text and does not play translated speech.
 

@@ -36,8 +36,8 @@ English settings: choose your microphone, spoken language, and topic vocabulary.
 | Requirement | Details |
 | --- | --- |
 | Desktop | x86_64 Omarchy / Arch Linux, in your logged-in desktop session |
-| Verified hardware | Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan |
-| Memory & disk | 32 GB RAM recommended, at least 16 GB; allow 20 GB free disk space for setup |
+| Verified hardware | Intel Core Ultra 9 285H, and Intel Core i7-1260P (Iris Xe, 16 GB RAM, Huawei MateBook), both with Intel integrated graphics using Vulkan |
+| Memory & disk | 16 GB RAM is enough (verified); about 10 GB free disk space for setup |
 | Microphone | A microphone positioned for the people speaking |
 | First setup | Internet access to GitHub, Hugging Face, and PyPI; about 2.85 GB of models, plus dependencies and source code |
 

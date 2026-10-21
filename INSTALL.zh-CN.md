@@ -2,7 +2,7 @@
 
 [English](INSTALL.md) | **简体中文**
 
-适用对象：带麦克风的 x86_64 Omarchy / Arch Linux 主机。已验证的硬件为 Intel Core Ultra 9 285H CPU 与 Intel 集成显卡（Vulkan）。其他 x86_64 硬件配置也可能支持，但尚未验证，需按实际显卡确认驱动并测试运行效果；不依赖 NPU。以下默认使用 Vulkan 翻译、CPU 识别。
+适用对象：带麦克风的 x86_64 Omarchy / Arch Linux 主机。已验证的硬件为 Intel Core Ultra 9 285H，以及 Intel Core i7-1260P（Iris Xe，16 GB 内存），均使用 Intel 集成显卡（Vulkan）。其他 x86_64 硬件配置也可能支持，但尚未验证，需按实际显卡确认驱动并测试运行效果；不依赖 NPU。以下默认使用 Vulkan 翻译、CPU 识别。
 
 This guide is also the installation contract for an AI agent. Read `AGENTS.md` and `README.md`, run commands as the logged-in desktop user, and report failures accurately. The application supports Chinese and English UI and speech. This is a source checkout installation, without creating an Arch package.
 
@@ -17,7 +17,7 @@ This guide is also the installation contract for an AI agent. Read `AGENTS.md` a
 ## 1. 系统准备 / Prerequisites
 
 - x86_64 Omarchy / Arch Linux，Python **3.12–3.14**，能进入当前用户的桌面会话。
-- 内存建议 32 GB，至少预留 16 GB；安装前建议有 20 GB 空闲磁盘。实际占用随构建缓存变化。
+- 16 GB 内存即可（已在 16 GB 笔记本上验证）；安装前建议有约 10 GB 空闲磁盘。实际占用随构建缓存变化。
 - 首次准备需要访问 GitHub、Hugging Face、PyPI，下载模型约 2.85 GB，另外还需依赖和源码。准备完成后，字幕识别和翻译可离线运行。
 - 内置扬声器不是必要条件：当前应用只显示字幕，没有译文语音播放。
 

@@ -1,6 +1,6 @@
 # Guidance for installation and maintenance agents
 
-This repository is a C++ / Qt Quick application for local Chinese–English microphone captions on x86_64 Omarchy / Arch Linux. Start with README.md and INSTALL.md. The verified hardware configuration is an Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work but have not been verified; check drivers and performance on the target machine. Do not assume another developer's model paths or installed Voxtype are present.
+This repository is a C++ / Qt Quick application for local Chinese–English microphone captions on x86_64 Omarchy / Arch Linux. Start with README.md and INSTALL.md. The verified hardware configurations are an Intel Core Ultra 9 285H and an Intel Core i7-1260P (16 GB RAM), both with Intel integrated graphics using Vulkan. Other x86_64 hardware configurations may also work but have not been verified; check drivers and performance on the target machine. Do not assume another developer's model paths or installed Voxtype are present.
 
 ## Installation workflow
 
