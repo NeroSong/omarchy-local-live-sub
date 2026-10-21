@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import runpy
 import signal
 import subprocess
@@ -15,6 +16,12 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'bin'))
 from lifecycle import atomic_json, private_open, read_owned
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
 
 
 class LifecycleTests(unittest.TestCase):
@@ -35,7 +42,8 @@ class LifecycleTests(unittest.TestCase):
         llama = root / 'runtime/llama.cpp/build/bin/llama-server'
         llama.parent.mkdir(parents=True); llama.write_text(sleeper); llama.chmod(0o755)
         env = {k:v for k,v in os.environ.items() if not k.startswith(('LIVE_SUB_', 'SENSEVOICE_', 'TRANSLATION_'))}
-        env.update(LIVE_SUB_ROOT=str(root), LIVE_SUB_CONFIG_DIR=str(root), LIVE_SUB_STATE_DIR=str(root / 'state'), LIVE_SUB_DATA_DIR=str(root / 'data'), LIVE_SUB_CACHE_DIR=str(root / 'cache'), LIVE_SUB_RUNTIME_DIR=str(root / 'runtime'), SENSEVOICE_MODEL_DIR=str(root / 'models/sensevoice-small-fp32'), TRANSLATION_MODEL_PATH=str(root / 'models/translation.gguf'))
+        # Never depend on, or collide with, a developer's real services on 8178/8179.
+        env.update(LIVE_SUB_ASR_PORT=str(free_port()), LIVE_SUB_TRANSLATION_PORT=str(free_port()), LIVE_SUB_ROOT=str(root), LIVE_SUB_CONFIG_DIR=str(root), LIVE_SUB_STATE_DIR=str(root / 'state'), LIVE_SUB_DATA_DIR=str(root / 'data'), LIVE_SUB_CACHE_DIR=str(root / 'cache'), LIVE_SUB_RUNTIME_DIR=str(root / 'runtime'), SENSEVOICE_MODEL_DIR=str(root / 'models/sensevoice-small-fp32'), TRANSLATION_MODEL_PATH=str(root / 'models/translation.gguf'))
         return env
 
     def test_private_atomic_files_and_unsafe_links(self):
@@ -94,6 +102,15 @@ class LifecycleTests(unittest.TestCase):
                     first.send_signal(signal.SIGTERM)
                     first.wait(timeout=15)
                 first.stdout.close()
+
+    def test_invalid_port_override_is_rejected_before_any_child_starts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); env = self.fake_runtime(root)
+            env['LIVE_SUB_ASR_PORT'] = '70000'
+            run = subprocess.run([sys.executable, str(root / 'bin/models-start'), '--cpu'], env=env, capture_output=True, text=True, timeout=8)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn('ports', run.stderr)
+            self.assertFalse((root / 'state/models-process.json').exists())
 
     def test_second_child_spawn_failure_cleans_first_child_and_lock(self):
         with tempfile.TemporaryDirectory() as temporary:

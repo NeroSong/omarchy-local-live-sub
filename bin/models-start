@@ -54,9 +54,13 @@ def supervise(paths, args):
     for path in [asr_python, asr_server, llama, asr / "model.onnx", asr / "tokens.txt", translation]:
         if not path.is_file():
             raise RuntimeError(f"Missing {path}. Run live-sub --setup (package) or ./bin/setup (source) first.")
+    # Overrides exist for isolated tests; the app and bin/start use the default ports.
+    ports = [int(os.environ.get("LIVE_SUB_ASR_PORT", "8178")), int(os.environ.get("LIVE_SUB_TRANSLATION_PORT", "8179"))]
+    if not all(1 <= port <= 65535 for port in ports):
+        raise ValueError("Model service ports must be between 1 and 65535")
     reservations = []
     try:
-        for port in [8178, 8179]:
+        for port in ports:
             sock = socket.socket()
             reservations.append(sock)
             sock.bind(("127.0.0.1", port))
@@ -68,7 +72,7 @@ def supervise(paths, args):
     child_env["SENSEVOICE_MODEL_DIR"] = str(asr)
     commands = [
         [str(asr_python), str(asr_server)],
-        [str(llama), "--host", "127.0.0.1", "--port", "8179", "-m", str(translation),
+        [str(llama), "--host", "127.0.0.1", "--port", str(ports[1]), "-m", str(translation),
          "--alias", "translator", "-c", "4096", "-t", "6", "-ngl", "0" if cpu else "99", "--parallel", "1"]
     ]
     private_directory(paths.logs)
@@ -100,7 +104,7 @@ def supervise(paths, args):
                 try:
                     # Bypass external proxies for local model checks.
                     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-                    for url in ["http://127.0.0.1:8178/", "http://127.0.0.1:8179/health"]:
+                    for url in [f"http://127.0.0.1:{ports[0]}/", f"http://127.0.0.1:{ports[1]}/health"]:
                         with opener.open(url, timeout=1) as response:
                             if response.status != 200:
                                 raise OSError("Not ready")
