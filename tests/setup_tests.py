@@ -26,7 +26,7 @@ class SetupTests(unittest.TestCase):
     def test_fresh_machine_selects_bundled_model_without_voxtype(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); home = root / 'fake-user'
-            self.assertEqual(asr_directory(root, {}, home), root / 'models/sensevoice-small-fp32')
+            self.assertEqual(asr_directory(root, {}, home), home / '.cache/live-sub/models/sensevoice-small-fp32')
             local = home / '.local/share/voxtype/models/sensevoice-small-fp32'
             local.mkdir(parents=True)
             for name in ASR_FILES: (local / name).write_bytes(b'fixture')
@@ -59,7 +59,7 @@ class SetupTests(unittest.TestCase):
                 download_verified('https://example.test/model', path, hashlib.sha256(data).hexdigest())
                 request.assert_not_called()
 
-    def test_missing_asr_is_downloaded_to_project_not_user_voxtype(self):
+    def test_missing_asr_is_downloaded_to_cache_not_user_voxtype(self):
         namespace = runpy.run_path(str(ROOT / 'bin/bootstrap'))
         prepare = namespace['prepare_asr']
         with tempfile.TemporaryDirectory() as temporary:
@@ -68,22 +68,22 @@ class SetupTests(unittest.TestCase):
             lock = {ASR_REPO:{'revision':'pinned-test', 'files':{name:{'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)} for name,data in fixtures.items()}}}
             (root / 'dependencies.lock.json').write_text(json.dumps(lock))
             def download(url, destination, expected, size):
-                self.assertTrue(str(destination).startswith(str(root / 'models')))
+                self.assertTrue(str(destination).startswith(str(root / 'cache/models')))
                 self.assertIn('/resolve/pinned-test/', url)
                 destination.write_bytes(fixtures[destination.name])
-            with patch.dict(prepare.__globals__, ROOT=root, asr_directory=lambda _:root / 'missing', download_verified=download), patch.dict('os.environ', {}, clear=True):
+            with patch.dict(prepare.__globals__, ROOT=root, asr_directory=lambda _:root / 'missing', download_verified=download), patch.dict('os.environ', {'LIVE_SUB_CACHE_DIR':str(root / 'cache')}, clear=True):
                 record = {}; prepare(record)
-            self.assertEqual(Path(record['active_asr']['directory']), root / 'models/sensevoice-small-fp32')
-            self.assertTrue((root / 'models/sensevoice-small-fp32/tokens.txt').is_file())
+            self.assertEqual(Path(record['active_asr']['directory']), root / 'cache/models/sensevoice-small-fp32')
+            self.assertTrue((root / 'cache/models/sensevoice-small-fp32/tokens.txt').is_file())
 
-    def test_user_launcher_points_to_checkout_including_spaces(self):
+    def test_source_user_launcher_handles_spaces(self):
         namespace = runpy.run_path(str(ROOT / 'bin/setup'))
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / 'Checkout with spaces'
             namespace['install_desktop'](root, Path(temporary) / 'data')
             entry = Path(temporary) / 'data/applications/live-sub.desktop'
             text = entry.read_text()
-            self.assertIn(f'Exec="{root}/bin/start"', text)
+            self.assertIn(f'Exec="{root}/bin/live-sub-launch"', text)
             self.assertNotIn('/usr/bin/live-sub', text)
             if shutil.which('desktop-file-validate'):
                 result = subprocess.run(['desktop-file-validate', str(entry)], capture_output=True, text=True)

@@ -47,7 +47,7 @@ cd omarchy-local-live-sub
 **模型来源和安全恢复：**
 
 - 默认识别模型是锁定版本的 [SenseVoice FP32](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17)，翻译模型是 [Hy-MT2-1.8B Q8_0](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF)。提交、文件、大小和 SHA256 在 `dependencies.lock.json` 中。
-- 模型不存在时自动下载到 `models/`。完整的项目内识别模型优先；其次只读复用 Voxtype 同名模型，并校验内容。没有 Voxtype 不影响安装。
+- 模型不存在时自动下载到 `~/.cache/live-sub/models/`。完整的缓存识别模型优先；旧项目模型可校验后只读复用；其次只读复用 Voxtype 同名模型，并校验内容。没有 Voxtype 不影响安装。
 - 如果现有 Voxtype 模型与锁定版本不同，保留它，运行 `./bin/setup --desktop --download-asr` 下载项目独立模型。若设置过 `SENSEVOICE_MODEL_DIR`，先明确检查并取消该覆盖；脚本不会往其目录下载。
 - 下载中断后重新执行原命令，会尝试续传 `.part`；服务器不支持续传则重新下载该文件。完整模型校验通过才替换最终文件；已校验模型不会再次下载。SHA256 不一致时停止，不得跳过校验、随意替换量化版本或使用来源不明的镜像。
 - 网络受限时保留错误和进度，由机器使用者配置可用网络/代理后重试；不需要为公开模型提供令牌。不要把代理密码或其他凭据写入仓库。
@@ -89,7 +89,7 @@ cd omarchy-local-live-sub
 - 此按钮要求 Omarchy 默认 Agent 已安装、已配置；缺少 Agent 不影响字幕运行。Agent 的提供方可能联网，应用不会主动将字幕、录音或日志放入提示。若用户手工提供例句，应自行决定是否分享。
 - `glossary.json` 中 Omarchy 默认采用保守纠错，保留 `how much` 等普通表达。强制近音规则默认关闭；仅在专门话题中经使用者决定后开启，开启后可能误改普通短语。查看 `raw` 和纠错记录确认，并继续保留 `come` 的保护规则。
 - 词表有效修改会热更新；无效修改保留进程内上一份有效配置。修改解码模式/线程数或切换整个配置目录需要停止并重启项目模型服务。已完成字幕不会被追溯重写。
-- 字幕只在主动导出后写入 `sessions/`；`runtime/logs/` 也可能包含识别文字。不要上传真实会议数据到 Git 或排错帖子。
+- 字幕只在主动导出后写入 `~/.local/share/live-sub/sessions/`；`~/.local/state/live-sub/logs/` 也可能包含识别文字。不要上传真实会议数据到 Git 或排错帖子。
 
 ## 5. 排查与回退 / Troubleshooting
 
@@ -99,8 +99,8 @@ cd omarchy-local-live-sub
 | Python 版本或 wheel 不支持 | 使用 Python 3.12–3.14 创建本项目环境；不要修改系统 Python 链接或使用 `sudo pip`。 |
 | Vulkan 不可用 | 检查对应显卡的驱动和 `vulkaninfo --summary`，确认硬件设备可见；不要将 llvmpipe/lavapipe 软件设备当作 GPU。需要时采用下方显式 CPU 回退。 |
 | 没有麦克风/Pulse connection refused | 在当前登录桌面用户的终端运行，确认物理麦克风已连接及 `pactl -f json list sources` 可见；SSH、容器或沙箱不可见不能直接证明主机故障。 |
-| 窗口未出现 | 查看 `runtime/logs/ui.log`，核对桌面会话环境与 Qt Wayland 依赖。`--demo` 只能检查界面。 |
-| 模型启动失败 | 查看 `runtime/logs/supervisor.log`、`asr.log`、`translation.log`；保留具体错误，不静默换模型。 |
+| 窗口未出现 | 查看 `~/.local/state/live-sub/logs/ui.log`，核对桌面会话环境与 Qt Wayland 依赖。`--demo` 只能检查界面。 |
+| 模型启动失败 | 查看 `~/.local/state/live-sub/logs/supervisor.log`、`asr.log`、`translation.log`；保留具体错误，不静默换模型。 |
 | 8178/8179 端口占用 | `./bin/start --status` 检查归属。仅 `./bin/models-stop` 停止当前项目管理的服务；其他程序需要先确认归属，不能 `pkill` 所有 Python/llama 进程。 |
 | 配置目录不一致/旧服务 | 停止收音、等待并导出，然后 `./bin/models-stop`，再 `./bin/start`。切换主题词表目录时设置相同的 `LIVE_SUB_CONFIG_DIR`。 |
 | 术语修改未生效 | 检查设置中的词表版本/错误和识别服务健康信息；保证两个 JSON 文件完整合法，再用新的一句话验证。 |
@@ -115,4 +115,4 @@ cd omarchy-local-live-sub
 
 这会把翻译引擎重新构建为 CPU 模式并记录选择，速度需要重新试用。`bin/start` 没有 `--cpu` 选项；若只是临时禁用已构建 Vulkan 引擎的 GPU，可另开终端运行 `./bin/models-start --cpu`，待就绪后再启动应用。不要在原有字幕任务进行中切换。
 
-无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不停止常驻模型。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；删除项目前先备份词表、`topics/` 和所需字幕。
+无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不停止常驻模型。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；独立安装包不再依赖构建时的源码目录，卸载保留 XDG 用户数据。删除旧项目前应确认没有继续复用其中的模型，并备份旧词表和字幕。[系统集成指南](SYSTEM-INTEGRATION.md) 说明了迁移、升级与卸载。

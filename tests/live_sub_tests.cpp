@@ -13,6 +13,37 @@
 #include <QScopeGuard>
 #include <QSaveFile>
 #include <QJsonArray>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <sys/stat.h>
+#include "privatestorage.h"
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickWindow>
+#include <QQuickStyle>
+
+class TestEnvironment {
+public:
+    void set(const QByteArray &key, const QByteArray &value) {
+        remember(key); qputenv(key.constData(), value);
+    }
+    void unset(const QByteArray &key) {
+        remember(key); qunsetenv(key.constData());
+    }
+    ~TestEnvironment() {
+        for (auto it = old.cbegin(); it != old.cend(); ++it)
+            if (present.contains(it.key())) qputenv(it.key().constData(), it.value());
+            else qunsetenv(it.key().constData());
+    }
+private:
+    void remember(const QByteArray &key) {
+        if (old.contains(key)) return;
+        old.insert(key, qgetenv(key.constData()));
+        if (qEnvironmentVariableIsSet(key.constData())) present.insert(key);
+    }
+    QHash<QByteArray, QByteArray> old;
+    QSet<QByteArray> present;
+};
 
 class LiveSubTests : public QObject {
     Q_OBJECT
@@ -35,6 +66,189 @@ class LiveSubTests : public QObject {
         return terms.load(fixture.fileName(), error);
     }
 private slots:
+    void initTestCase() {
+        QGuiApplication::setQuitOnLastWindowClosed(false);
+        QQuickStyle::setStyle("Material");
+    }
+    void windowCanCancelStartup_data() {
+        QTest::addColumn<bool>("translationProbe");
+        QTest::addColumn<bool>("cancelButton");
+        QTest::newRow("close-during-asr") << false << false;
+        QTest::newRow("close-during-translation") << true << false;
+        QTest::newRow("cancel-button-during-asr") << false << true;
+        QTest::newRow("cancel-button-during-translation") << true << true;
+    }
+    void windowCanCancelStartup() {
+        QFETCH(bool, translationProbe);
+        QFETCH(bool, cancelButton);
+        QTemporaryDir dir;
+        auto write = [&](const QString &name, const QByteArray &bytes, bool executable = false) {
+            QFile file(dir.filePath(name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return false;
+            file.close();
+            return !executable || file.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        };
+        QVERIFY(write("glossary.json", "[]"));
+        QVERIFY(write("ffmpeg", "#!/bin/sh\nprintf started > \"$LIVE_SUB_TEST_CAPTURE_MARKER\"\n", true));
+        QVERIFY(write("pactl", "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QTcpServer asr, translation;
+        QVERIFY(asr.listen(QHostAddress::LocalHost));
+        QVERIFY(translation.listen(QHostAddress::LocalHost));
+        TestEnvironment env;
+        env.set("PATH", dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_TEST_CAPTURE_MARKER", dir.filePath("captured").toUtf8());
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(asr.serverPort())).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(translation.serverPort())).toUtf8());
+        auto healthy = [](QTcpSocket *socket) {
+            if (socket->state() != QAbstractSocket::ConnectedState) return;
+            socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            socket->disconnectFromHost();
+        };
+        Backend backend(dir.path());
+        Theme theme(dir.filePath("colors.toml"));
+        Translator translator(dir.filePath("ui.ini"), dir.filePath("language"));
+        QQmlApplicationEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.load(QUrl("qrc:/Main.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(window); QVERIFY(window->isVisible());
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(asr.hasPendingConnections());
+        auto *pending = asr.nextPendingConnection();
+        if (translationProbe) {
+            healthy(pending);
+            QTRY_VERIFY(translation.hasPendingConnections());
+            pending = translation.nextPendingConnection();
+        }
+        if (cancelButton) {
+            auto *button = window->findChild<QObject *>("stopCaptionsButton");
+            QVERIFY(button); QVERIFY(button->property("enabled").toBool());
+            QCOMPARE(button->property("text").toString(), QString("Cancel startup"));
+            QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
+            QVERIFY(!backend.startingCapture());
+        }
+        QVERIFY(window->close());
+        QVERIFY(!window->isVisible());
+        healthy(pending);
+        QTest::qWait(100);
+        QVERIFY(!backend.startingCapture()); QVERIFY(!backend.recording()); QVERIFY(!backend.busy());
+        QVERIFY(!QFileInfo::exists(dir.filePath("captured")));
+    }
+    void startupCancellation_data() {
+        QTest::addColumn<bool>("translationProbe");
+        QTest::addColumn<bool>("toggleAgain");
+        QTest::newRow("stop-during-asr") << false << false;
+        QTest::newRow("stop-during-translation") << true << false;
+        QTest::newRow("toggle-during-asr") << false << true;
+        QTest::newRow("toggle-during-translation") << true << true;
+    }
+    void startupCancellation() {
+        QFETCH(bool, translationProbe);
+        QFETCH(bool, toggleAgain);
+        QTemporaryDir dir;
+        auto write = [&](const QString &name, const QByteArray &bytes, bool executable = false) {
+            QFile file(dir.filePath(name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return false;
+            file.close();
+            return !executable || file.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        };
+        QVERIFY(write("glossary.json", "[]"));
+        // A regression must never acquire a real microphone, even on developer machines.
+        QVERIFY(write("ffmpeg", "#!/bin/sh\nprintf started > \"$LIVE_SUB_TEST_CAPTURE_MARKER\"\n", true));
+        QVERIFY(write("pactl", "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QTcpServer asr, translation;
+        QVERIFY(asr.listen(QHostAddress::LocalHost));
+        QVERIFY(translation.listen(QHostAddress::LocalHost));
+        TestEnvironment env;
+        env.set("PATH", dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_TEST_CAPTURE_MARKER", dir.filePath("captured").toUtf8());
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(asr.serverPort())).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(translation.serverPort())).toUtf8());
+        auto healthy = [](QTcpSocket *socket) {
+            if (socket->state() != QAbstractSocket::ConnectedState) return;
+            socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            socket->disconnectFromHost();
+        };
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        QVERIFY(backend.startingCapture()); QVERIFY(backend.busy()); QVERIFY(!backend.recording());
+        QTRY_VERIFY(asr.hasPendingConnections());
+        auto *pending = asr.nextPendingConnection();
+        if (translationProbe) {
+            healthy(pending);
+            QTRY_VERIFY(translation.hasPendingConnections());
+            pending = translation.nextPendingConnection();
+        }
+        if (toggleAgain) backend.toggle("test-microphone", "auto", -42);
+        else backend.stop();
+        QVERIFY(!backend.startingCapture()); QVERIFY(!backend.recording()); QVERIFY(!backend.busy());
+        healthy(pending); // A late successful response cannot restart capture.
+        QTest::qWait(100);
+        QVERIFY(!QFileInfo::exists(dir.filePath("captured")));
+        QVERIFY(!backend.startingCapture()); QVERIFY(!backend.recording());
+
+        // A deliberate new start still works; an old cancellation is not sticky.
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(asr.hasPendingConnections());
+        healthy(asr.nextPendingConnection());
+        QTRY_VERIFY(translation.hasPendingConnections());
+        healthy(translation.nextPendingConnection());
+        QTRY_VERIFY(QFileInfo::exists(dir.filePath("captured")));
+        QTRY_VERIFY(!backend.busy());
+    }
+    void privateStorageDoesNotFollowLinksOrChangeOverrideDirectories() {
+        QTemporaryDir dir;
+        QString error;
+        const auto target = dir.filePath("private");
+        QVERIFY(PrivateStorage::ensureDirectory(target, error));
+        struct stat info {};
+        QVERIFY(::stat(QFile::encodeName(target).constData(), &info) == 0);
+        QCOMPARE(info.st_mode & 0777, mode_t(0700));
+        const auto link = dir.filePath("link");
+        QVERIFY(QFile::link(target, link));
+        QVERIFY(!PrivateStorage::ensureDirectory(link, error));
+        QVERIFY(::chmod(QFile::encodeName(target).constData(), 0755) == 0);
+        QVERIFY(!PrivateStorage::ensureDirectory(target, error, false));
+        QVERIFY(::stat(QFile::encodeName(target).constData(), &info) == 0);
+        QCOMPARE(info.st_mode & 0777, mode_t(0755));
+        QVERIFY(PrivateStorage::ensureDirectory(target, error));
+        QVERIFY(!PrivateStorage::ensureDirectory("", error));
+        QVERIFY(!PrivateStorage::ensureDirectory(".", error));
+    }
+    void exportedCaptionsArePrivateAndUseUserDataDirectory() {
+        QTemporaryDir dir;
+        const auto originalMask = ::umask(0022);
+        const auto restoreMask = qScopeGuard([&] { ::umask(originalMask); });
+        QFile fixture(dir.filePath("input.json"));
+        QVERIFY(fixture.open(QIODevice::WriteOnly));
+        fixture.write(R"({"format_version":1,"captions":[{"original":"Private original","translation":"Private translation","raw":"Raw input"}]})");
+        fixture.close();
+        TestEnvironment env;
+        env.set("LIVE_SUB_DATA_DIR", dir.filePath("user-data").toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.unset("LIVE_SUB_SESSIONS");
+        Backend backend(dir.path());
+        QVERIFY(backend.restoreSession(fixture.fileName()));
+        backend.exportSession();
+        const auto sessions = dir.filePath("user-data/sessions");
+        const auto exported = QDir(sessions).entryList({"*.json"}, QDir::Files);
+        QCOMPARE(exported.size(), 1);
+        QVERIFY(!QDir(dir.filePath("sessions")).exists());
+        struct stat info {};
+        QVERIFY(::stat(QFile::encodeName(sessions).constData(), &info) == 0);
+        QCOMPARE(info.st_mode & 0777, mode_t(0700));
+        QVERIFY(::stat(QFile::encodeName(sessions + "/" + exported.first()).constData(), &info) == 0);
+        QCOMPARE(info.st_mode & 0777, mode_t(0600));
+        QFile output(sessions + "/" + exported.first());
+        QVERIFY(output.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(output.readAll()).object()["captions"].toArray().first().toObject()["raw"].toString(), QString("Raw input"));
+        QVERIFY(!backend.unsaved());
+    }
     void themeFollowsAtomicLightDarkSwitchAndKeepsCaptionsReadable() {
         QTemporaryDir dir;
         const auto path = dir.filePath("colors.toml");
@@ -411,5 +625,5 @@ private slots:
             QString("Come to Omarchy. Omarchy is great."));
     }
 };
-QTEST_GUILESS_MAIN(LiveSubTests)
+QTEST_MAIN(LiveSubTests)
 #include "live_sub_tests.moc"

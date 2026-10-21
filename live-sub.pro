@@ -10,4 +10,6 @@ HEADERS += src/translator.h
 SOURCES += src/translator.cpp
 HEADERS += src/agentcontext.h
 SOURCES += src/agentcontext.cpp
+HEADERS += src/privatestorage.h
+SOURCES += src/privatestorage.cpp
 RESOURCES += src/resources.qrc

@@ -19,6 +19,7 @@ void Translator::setSelection(const QString &selection) {
     selected = selection;
     settings.setValue("ui/language", selected);
     settings.sync();
+    QFile::setPermissions(settings.fileName(), QFile::ReadOwner | QFile::WriteOwner);
     const auto previous = effective;
     reload();
     if (previous == effective) emit changed();

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build isolated inference tools and verify model downloads; no system installation."""
 import argparse
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -11,7 +10,9 @@ import sys
 import time
 import urllib.request
 
-from model_assets import ASR_REPO, ASR_FILES, asr_directory, checksum, download_verified
+from model_assets import ASR_REPO, ASR_FILES, asr_directory, translation_path, checksum, download_verified
+from app_paths import AppPaths
+from lifecycle import acquire_lock, atomic_json, private_directory
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -29,9 +30,8 @@ def api(url):
             time.sleep(2 + attempt)
 
 def model(repo, match, destination, lock):
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.with_suffix(destination.suffix + ".lock").open("a") as guard:
-        fcntl.flock(guard, fcntl.LOCK_EX)
+    paths = AppPaths(ROOT)
+    with acquire_lock(paths.runtime / "translation-download.lock") as guard:
         _model_locked(repo, match, destination, lock)
 
 def _model_locked(repo, match, destination, lock):
@@ -51,7 +51,12 @@ def _model_locked(repo, match, destination, lock):
         if not expected:
             raise RuntimeError(f"Missing published SHA256 for {filename}")
     url = os.environ.get("TRANSLATION_DOWNLOAD_URL", f"https://huggingface.co/{repo}/resolve/{revision}/{filename}")
-    download_verified(url, destination, expected, size)
+    paths = AppPaths(ROOT)
+    if destination != paths.models / "translation.gguf":
+        if not destination.is_file() or checksum(destination) != expected:
+            raise RuntimeError(f"Existing external model differs from the pinned checksum: {destination}. No existing model was changed.")
+    else:
+        download_verified(url, destination, expected, size)
     lock[repo] = {"revision": revision, "file": filename, "sha256": expected, "size": size}
 
 
@@ -62,10 +67,9 @@ def prepare_asr(lock, force_download=False):
     if os.environ.get("SENSEVOICE_MODEL_DIR") and (force_download or not complete):
         raise RuntimeError("SENSEVOICE_MODEL_DIR must point to a complete model directory. Unset it to download the bundled model.")
     if force_download or not complete:
-        destination = ROOT / "models/sensevoice-small-fp32"
-        destination.mkdir(parents=True, exist_ok=True)
-        with (destination / ".download.lock").open("a") as guard:
-            fcntl.flock(guard, fcntl.LOCK_EX)
+        destination = AppPaths(ROOT).models / "sensevoice-small-fp32"
+        private_directory(destination)
+        with acquire_lock(destination / ".download.lock") as guard:
             for filename, details in pinned["files"].items():
                 download_verified(f"https://huggingface.co/{ASR_REPO}/resolve/{pinned['revision']}/{filename}",
                     destination / filename, details["sha256"], details["size"])
@@ -77,36 +81,62 @@ def prepare_asr(lock, force_download=False):
     lock["active_asr"] = {"engine": "sensevoice", "model": "small-fp32", "directory": str(destination), "default_language": "auto"}
 
 
+def clone_source(name, url, path, pinned):
+    expected = pinned[name]
+    if path.exists():
+        if not (path / '.git').is_dir():
+            raise RuntimeError(f'{path} is not a managed git checkout. Existing files were not changed.')
+        remote = subprocess.check_output(['git', '-C', str(path), 'remote', 'get-url', 'origin'], text=True).strip()
+        if remote != url:
+            raise RuntimeError(f'{path} uses an unexpected remote. Existing source was not changed.')
+        head = subprocess.run(['git', '-C', str(path), 'rev-parse', '--verify', 'HEAD'], capture_output=True, text=True)
+        if head.returncode == 0:
+            if head.stdout.strip() != expected:
+                raise RuntimeError(f'{path} uses {head.stdout.strip()}, expected {expected}. Existing source was not changed.')
+            return
+        status = subprocess.check_output(['git', '-C', str(path), 'status', '--porcelain', '--untracked-files=all'], text=True)
+        if status.strip():
+            raise RuntimeError(f'{path} has files in an interrupted checkout. Preserve them before retrying.')
+    else:
+        run('git', 'init', str(path))
+        run('git', '-C', str(path), 'remote', 'add', 'origin', url)
+    run('git', '-C', str(path), 'fetch', '--depth', '1', 'origin', expected)
+    run('git', '-C', str(path), 'checkout', '--detach', 'FETCH_HEAD')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", action="store_true", help="build CPU only, without Vulkan development headers")
     parser.add_argument("--tools-only", action="store_true", help="skip model downloads")
     parser.add_argument("--models-only", action="store_true", help="download and verify models without building tools")
     parser.add_argument("--only-model", choices=["asr", "translation"], help="prepare only one selected model")
-    parser.add_argument("--download-asr", action="store_true", help="download the pinned SenseVoice model into this project even if Voxtype already has one")
+    parser.add_argument("--download-asr", action="store_true", help="download the pinned SenseVoice model into the user cache even if Voxtype already has one")
     args = parser.parse_args()
+    if os.geteuid() == 0:
+        raise RuntimeError("Run bootstrap as the normal desktop user, not root.")
+    paths = AppPaths(ROOT)
+    paths.initialize()
     if not (3, 12) <= sys.version_info[:2] <= (3, 14):
         raise RuntimeError("Python 3.12-3.14 is required by the pinned inference wheels")
     if args.tools_only and (args.models_only or args.only_model or args.download_asr):
         parser.error("--tools-only cannot be combined with model preparation flags")
-    required = [] if args.models_only else ["git", "cmake", "make", "g++", "ffmpeg", "pactl", "qmake6"]
+    required = [] if args.models_only else ["git", "cmake", "make", "g++", "ffmpeg", "pactl"]
+    if not args.models_only and not paths.packaged:
+        required.append("qmake6")
     if not args.models_only and not args.cpu:
         required.append("glslc")
     missing = [name for name in required if not shutil.which(name)]
     if missing:
         raise RuntimeError("Missing tools: " + ", ".join(missing))
-    runtime = ROOT / "runtime"
-    runtime.mkdir(exist_ok=True)
+    runtime = paths.runtime
+    bootstrap_guard = acquire_lock(runtime / "bootstrap.lock")
     manifest = runtime / "manifest.json"
     lock = json.loads(manifest.read_text()) if manifest.exists() else {}
     def save_manifest():
-        with (runtime / "manifest.lock").open("a") as guard:
-            fcntl.flock(guard, fcntl.LOCK_EX)
+        with acquire_lock(runtime / "manifest.lock"):
             current = json.loads(manifest.read_text()) if manifest.exists() else {}
             current.update(lock)
-            temp = runtime / "manifest.json.tmp"
-            temp.write_text(json.dumps(current, indent=2) + "\n")
-            temp.replace(manifest)
+            atomic_json(manifest, current)
     if not args.tools_only:
         if args.only_model != "translation":
             prepare_asr(lock, args.download_asr)
@@ -114,7 +144,7 @@ def main():
         repo = os.environ.get("TRANSLATION_REPO", "tencent/Hy-MT2-1.8B-GGUF")
         quant = os.environ.get("TRANSLATION_QUANT", "Q8_0")
         if args.only_model != "asr":
-            model(repo, lambda f: f.endswith("-" + quant + ".gguf"), ROOT / "models/translation.gguf", lock)
+            model(repo, lambda f: f.endswith("-" + quant + ".gguf"), translation_path(ROOT), lock)
             save_manifest()
     if args.models_only:
         return
@@ -124,25 +154,15 @@ def main():
             run(sys.executable, "-m", "venv", str(venv))
         run(str(venv / "bin/python"), "-m", "pip", "install", "-r", str(ROOT / requirements))
     pinned = json.loads((ROOT / "dependencies.lock.json").read_text())
-    def clone_source(name, url, path):
-        if path.exists():
-            actual = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
-            if actual != pinned[name]:
-                raise RuntimeError(f"{path} uses {actual}, expected {pinned[name]}. Existing source was not modified; preserve it before preparing a clean runtime.")
-            return
-        run("git", "init", str(path))
-        run("git", "-C", str(path), "remote", "add", "origin", url)
-        run("git", "-C", str(path), "fetch", "--depth", "1", "origin", pinned[name])
-        run("git", "-C", str(path), "checkout", "--detach", "FETCH_HEAD")
     vulkan_args = []
     if not args.cpu and not Path("/usr/include/vulkan/vulkan.h").exists():
         headers = runtime / "Vulkan-Headers"
-        clone_source("Vulkan-Headers", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers)
+        clone_source("Vulkan-Headers", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers, pinned)
         lock["Vulkan-Headers"] = subprocess.check_output(["git", "-C", str(headers), "rev-parse", "HEAD"], text=True).strip()
         vulkan_args = ["-DVulkan_INCLUDE_DIR=" + str(headers / "include")]
     if not args.cpu:
         spirv = runtime / "SPIRV-Headers"
-        clone_source("SPIRV-Headers", "https://github.com/KhronosGroup/SPIRV-Headers.git", spirv)
+        clone_source("SPIRV-Headers", "https://github.com/KhronosGroup/SPIRV-Headers.git", spirv, pinned)
         lock["SPIRV-Headers"] = subprocess.check_output(["git", "-C", str(spirv), "rev-parse", "HEAD"], text=True).strip()
         prefix = runtime / "sdk"
         run("cmake", "-S", str(spirv), "-B", str(spirv / "build"), "-DCMAKE_INSTALL_PREFIX=" + str(prefix))
@@ -150,7 +170,7 @@ def main():
         vulkan_args += ["-DCMAKE_PREFIX_PATH=" + str(prefix), '-DCMAKE_CXX_FLAGS=-I"' + str(prefix / "include") + '"']
     for name, target in [("llama.cpp", "llama-server")]:
         source = runtime / name
-        clone_source(name, f"https://github.com/ggml-org/{name}.git", source)
+        clone_source(name, f"https://github.com/ggml-org/{name}.git", source, pinned)
         lock[name] = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
         build = source / "build"
         run("cmake", "-S", str(source), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release",
@@ -159,7 +179,8 @@ def main():
         run("cmake", "--build", str(build), "--target", target, "-j", os.environ.get("BUILD_JOBS", "4"))
     lock["acceleration"] = "cpu" if args.cpu else "vulkan"
     save_manifest()
-    run(str(ROOT / "bin/build"))
+    if not paths.packaged:
+        run(str(ROOT / "bin/build"))
     print("Ready. Run ./bin/start to open the app, or ./bin/doctor to check this installation.")
 
 if __name__ == "__main__":

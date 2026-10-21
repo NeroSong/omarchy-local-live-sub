@@ -61,20 +61,20 @@
 ./bin/run --demo
 ```
 
-`--demo` 只展示示例文字，不采集音频，不运行模型。构建产物在 `build/`。
+`--demo` 只展示示例文字，不采集音频，不运行模型。构建、安装准备、测试和源码启动共用 XDG 数据目录下 `live-sub/runtime/ui-build/` 中按源码路径隔离的构建目录。可在构建与运行时设置相同的 `LIVE_SUB_BUILD_DIR` 覆盖。旧版 `build/` 中的产物保留但不再自动选取，升级后须重新构建一次。
 
 ## 准备模型与服务
 
 ### 1. SenseVoice 模型
 
-`./bin/bootstrap` 会在模型缺失时自动下载锁定版本到 `models/sensevoice-small-fp32/`，校验 SHA256 后使用，不要求安装 Voxtype。如果项目内没有完整模型而本机已有 Voxtype 的 `small-fp32`，只读校验并复用：
+`./bin/bootstrap` 会在模型缺失时自动下载锁定版本到 `~/.cache/live-sub/models/sensevoice-small-fp32/`，校验 SHA256 后使用，不要求安装 Voxtype。如果项目内没有完整模型而本机已有 Voxtype 的 `small-fp32`，只读校验并复用：
 
 ```text
 ~/.local/share/voxtype/models/sensevoice-small-fp32/model.onnx
 ~/.local/share/voxtype/models/sensevoice-small-fp32/tokens.txt
 ```
 
-可用 `./bin/bootstrap --models-only --download-asr` 强制准备项目独立模型，不改动 Voxtype。也可自行准备 [sherpa-onnx 官方 SenseVoice FP32 模型](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)，把 `model.onnx` 和 `tokens.txt` 放到项目 `models/sensevoice-small-fp32/`。项目内模型目录优先于 Voxtype 的目录。
+可用 `./bin/bootstrap --models-only --download-asr` 强制准备项目独立模型，不改动 Voxtype。也可自行准备 [sherpa-onnx 官方 SenseVoice FP32 模型](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)，把 `model.onnx` 和 `tokens.txt` 放到用户缓存 `~/.cache/live-sub/models/sensevoice-small-fp32/`。旧项目目录和 Voxtype 的完整模型也可校验后只读复用。
 
 其他位置可显式指定；准备与运行时都要设置该变量：
 
@@ -90,13 +90,13 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 ./bin/bootstrap
 ```
 
-该脚本会检查或下载 SenseVoice 模型，在独立的 `runtime/sensevoice-venv/` 和 `runtime/hotword-venv/` 安装固定版本的 Python 依赖，下载并校验翻译模型，编译 llama.cpp 和应用。它不安装系统包，不再下载或编译 Whisper。
+该脚本会检查或下载 SenseVoice 模型，在独立的 `~/.local/share/live-sub/runtime/sensevoice-venv/` 和 `~/.local/share/live-sub/runtime/hotword-venv/` 安装固定版本的 Python 依赖，下载并校验翻译模型，编译 llama.cpp 和应用。它不安装系统包，不再下载或编译 Whisper。
 
 - `requirements.txt` / `requirements-hotwords.txt` 分别固定原识别模式和热词识别模式的依赖版本。
 - `dependencies.lock.json` 记录首次准备使用的 llama.cpp / SDK 提交，以及两种模型的版本与散列。
-- 新源码检出使用锁定提交；已有 `runtime/` 源码目录必须匹配锁定提交，不自动覆盖或更新。
+- 新源码检出使用锁定提交；已有用户 `~/.local/share/live-sub/runtime/` 源码目录必须匹配锁定提交，不自动覆盖或更新。
 - 模型下载使用锁定 SHA256 校验，通过后才替换最终文件；中断可续传，有效缓存不重新下载。
-- 实际准备记录写入本地 `runtime/manifest.json`。
+- 实际准备记录写入用户 `~/.local/share/live-sub/runtime/manifest.json`。
 
 可选参数：
 
@@ -163,7 +163,7 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 开始后右下角显示“结束字幕”边框按钮；底部中央状态旁的 − / + 可实时调整两栏字号，每次 2 像素，范围 18–72 像素，全屏时也可调整。
 
-“界面语言”支持跟随 Omarchy、简体中文和 English，即时切换并记住选择；它与“说话语言”独立，不改变中英互译方向。开发模式的偏好保存在 `runtime/ui.ini`，可通过 `LIVE_SUB_UI_SETTINGS` 指定其他文件。`LIVE_SUB_UI_LANGUAGE=en` / `zh-CN` 可临时覆盖启动语言。
+“界面语言”支持跟随 Omarchy、简体中文和 English，即时切换并记住选择；它与“说话语言”独立，不改变中英互译方向。界面偏好保存在 `~/.local/state/live-sub/ui.ini`，可通过 `LIVE_SUB_UI_SETTINGS` 指定其他文件。`LIVE_SUB_UI_LANGUAGE=en` / `zh-CN` 可临时覆盖启动语言。
 
 开发版可用 `./bin/start --settings` 直接打开设置。设置内容在小窗口中可滚动，“完成”按钮始终保留在底部。
 
@@ -182,10 +182,10 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 新识别结果或译文更新会自动跟随最新内容；可在两次更新之间手动回看。空闲时左下角显示“清空”，清空前确认。状态圆点：绿色表示收音，黄色表示处理，红色表示异常；悬停查看详情。
 
-停止后关闭不再提醒保存；需要保留的内容请先主动导出。字幕导出到 `sessions/`，包含原始识别文字、术语修正后的文字、译文和纠错记录。恢复导出记录：
+停止后关闭不再提醒保存；需要保留的内容请先主动导出。字幕导出到 `~/.local/share/live-sub/sessions/`，包含原始识别文字、术语修正后的文字、译文和纠错记录。恢复导出记录：
 
 ```bash
-./bin/run --restore-session sessions/session-example.json
+./bin/run --restore-session ~/.local/share/live-sub/sessions/session-example.json
 ```
 
 ### 术语自动纠错
@@ -215,7 +215,7 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 
 设置面板的“打开 Agent 沟通词表”使用 Omarchy 默认 Agent，在当前词表目录打开终端，并提供实际配置路径、三层词表格式、热更新行为、普通词保护与验证要求。先与 Agent 讨论主题和识别例句，再由它帮助修改；应用不会自动把字幕、录音或日志加入提示。未选择或未安装默认 Agent 时会在窗口提示，可在 Omarchy 的 Setup → Defaults → Agent 中设置。
 
-开发版和通过 `bin/start` / 桌面入口启动的版本默认都使用项目目录，安装包内的 `/usr/share/live-sub/glossary.json` 仅作为直接启动系统二进制时的后备。Omarchy 调用采用 `omarchy launch tui` 和 `omarchy agent prompt --inline`，不绑定特定提供方；终端中的工作目录显式设为实际词表目录，路径和提示均按独立参数传递。
+开发版与安装版都默认使用用户配置目录 `~/.config/live-sub/`，支持 XDG 覆盖；设置面板显示实际路径。仓库和 `/usr/share/live-sub/` 中的词表是首次初始化的默认资源，后续请编辑用户目录。旧配置、主题、界面设置和字幕只在目标不存在时复制，原文件保留；显式 `LIVE_SUB_CONFIG_DIR` 主题目录不会被填入默认词表。Omarchy 调用采用 `omarchy launch tui` 和 `omarchy agent prompt --inline`，不绑定特定提供方；终端中的工作目录显式设为实际词表目录，路径和提示均按独立参数传递。
 
 现场按问题出现的层次修改，无需停止收音、重新编译或重载模型：
 
@@ -240,9 +240,10 @@ export SENSEVOICE_MODEL_DIR=/absolute/path/to/sensevoice-small-fp32
 为不同主题准备独立目录，目录中同时放置 `glossary.json` 和 `asr-config.json`。例如先复制当前规则，再针对硬件讨论编辑：
 
 ```bash
-mkdir -p topics/hardware
-cp glossary.json asr-config.json topics/hardware/
-LIVE_SUB_CONFIG_DIR="$PWD/topics/hardware" ./bin/start
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/live-sub"
+mkdir -p "$CONFIG/topics/hardware"
+cp "$CONFIG/glossary.json" "$CONFIG/asr-config.json" "$CONFIG/topics/hardware/"
+LIVE_SUB_CONFIG_DIR="$CONFIG/topics/hardware" ./bin/start
 ```
 
 首次切换目录、或从旧服务升级时，先停止收音、等待任务完成并导出，再执行 `./bin/models-stop` 后按上述命令启动。启动器会拒绝复用其他配置目录的旧识别服务；同一目录中的文件内容之后可持续热更新。`topics/` 默认不纳入 Git，可由现场人员备份、分享完整主题目录。
@@ -253,7 +254,7 @@ LIVE_SUB_CONFIG_DIR="$PWD/topics/hardware" ./bin/start
 
 音频和文本在本机处理，不上传会议内容。不修改默认音频源、麦克风增益、PipeWire、系统服务、全局快捷键或已有语音输入配置。应用通过独立 ffmpeg 进程采集所选麦克风，结束后释放。
 
-音频仅保留在内存；主动导出才保存字幕。`runtime/logs/` 可能包含识别文字，应作为会议数据保护；启动服务时会覆盖对应日志。
+音频仅保留在内存；主动导出才保存字幕。`~/.local/state/live-sub/logs/` 可能包含识别文字，应作为会议数据保护；启动服务时会覆盖识别/翻译日志，启动器/界面日志采用追加方式。
 
 Git 只收录代码、文档和依赖声明。模型、字幕记录、录音、日志、虚拟环境、上游源码和构建产物均不提交。
 
@@ -270,7 +271,7 @@ dependencies.lock.json  上游源码与识别/翻译模型版本
 glossary.json           专业术语表
 ```
 
-模型、服务状态和数据目录 `models/`、`runtime/`、`build/`、`sessions/` 在首次使用时生成，不随仓库分发。
+模型、服务状态和用户数据分别保存在 XDG 缓存、状态、数据目录；开发构建按源码路径隔离在用户 runtime 中，可用 `LIVE_SUB_BUILD_DIR` 指定。具体路径与迁移见 [系统集成指南](SYSTEM-INTEGRATION.md)。
 
 ## 开发与可选安装
 
@@ -279,15 +280,17 @@ glossary.json           专业术语表
 ./bin/test
 ```
 
-已有测试覆盖切段、PCM / WAV、术语、翻译方向、输出截断及 SSE 碎片解析。热词解码器另有无音频的回归用例：`runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py`。当前会议环境的使用效果由用户试用确认；自动化检查不代表全场会议验收。
+已有测试覆盖切段、PCM / WAV、术语、翻译方向、输出截断及 SSE 碎片解析。热词解码器另有无音频的回归用例：`~/.local/share/live-sub/runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py`。当前会议环境的使用效果由用户试用确认；自动化检查不代表全场会议验收。
 
 `./bin/benchmark speech-16k.wav --language auto` 可选测量模型处理耗时，它使用固定 6 秒片段，不能代表界面断句策略或采集端到端延迟；报告包含字幕文字，请勿提交。
 
 首次交付推荐 `./bin/setup --desktop`，只添加用户入口、不创建安装包，参见 [INSTALL.md](INSTALL.zh-CN.md)。`./bin/doctor --services --json` 可诊断安装，`./bin/smoke-test --json` 可用静音和公开例句检查真实推理，不代替麦克风试音。安装脚本回归可用 `python3 tests/setup_tests.py` 运行，不下载大模型。
 
-`./bin/install` 构建并安装 Arch 包，添加桌面入口。安装包含应用二进制、启动入口、图标、文档和词表；从启动器打开时会自动检查并启动项目模型服务，再运行 `/usr/bin/live-sub`。安装模式默认导出到 `~/.local/share/live-sub/sessions/`。
+`./bin/install` 构建并安装独立 Arch 包，包含应用、运行脚本、默认配置、图标和文档。安装后由普通用户运行 `live-sub --setup`，再运行 `live-sub --settings`；不再依赖构建机的源码路径。`live-sub --paths` 可查看实际用户目录，`live-sub --stop` 释放模型。
 
-模型、推理引擎和独立 Python 环境继续保留在本机项目目录，不复制进系统包。安装包记录构建时的项目路径，因此请保留该目录；迁移后重新安装，或通过 `LIVE_SUB_PROJECT=/new/project/path live-sub-launch` 指定位置。仅卸载应用包不会删除项目中的模型或字幕。
+模型、推理引擎和 Python 环境按用户准备，不打入系统包。旧源码用户可运行 `live-sub --setup --migrate-from /旧项目绝对路径 --migrate-only`，只复制缺失配置和字幕，不下载或覆盖数据。旧模型可只读复用，venv/原生构建因绝对路径不自动搬迁；仍在复用旧模型时不可删除旧目录。卸载包保留用户词表、字幕、模型和运行环境。完整流程见 [系统集成指南](SYSTEM-INTEGRATION.md)。
+
+`./bin/test-all` 运行全部无模型回归，含实际 QML 启动取消、HTTP 半包/并发、单实例、权限、无源码启动和迁移/升级/卸载。测试不会使用真实麦克风，仍需物理设备验收。
 
 ## 许可与上游
 

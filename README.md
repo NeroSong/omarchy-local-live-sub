@@ -92,17 +92,17 @@ Original text is refreshed roughly every two seconds using the accumulated speec
 | ? | Help |
 | Q | Quit; confirms while capturing, otherwise drains pending work and closes |
 
-New caption updates follow the latest text automatically. Exports from the checkout go to `sessions/` and include recognition and vocabulary metadata. Reopen an exported session with:
+New caption updates follow the latest text automatically. Exports go to `${XDG_DATA_HOME:-~/.local/share}/live-sub/sessions/` and include recognition and vocabulary metadata. Reopen an exported session with:
 
 ```bash
-./bin/run --restore-session sessions/session-example.json
+./bin/run --restore-session ~/.local/share/live-sub/sessions/session-example.json
 ```
 
 **Try it in the room before the meeting.** Overlapping speakers, echo, distance, noise, and mixed-language sentences affect results. The app uses an energy threshold to detect pauses, and the 18-second cap can split long sentences. Translation is displayed as text; there is no translated audio playback.
 
 ## Make it understand your topic
 
-Names, projects, and technical terms deserve their own vocabulary. There are three places to tune:
+Names, projects, and technical terms deserve their own vocabulary. Edit the active files in `~/.config/live-sub/` (or the configuration directory shown in settings), not the bundled defaults in the checkout. There are three places to tune:
 
 | When… | Edit… | Example |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ For separate topic folders, the complete glossary schema, and decoder details, s
 
 Audio and caption text are processed on your machine. The default recognition and translation services listen only on `127.0.0.1:8178` and `127.0.0.1:8179`. Capture uses an independent ffmpeg process and does not change default audio devices, gain, global shortcuts, or other speech-input tools.
 
-Audio is kept in memory. Caption files are written when you export; `runtime/logs/` may also contain recognized text, and service startup overwrites the corresponding logs. Treat logs and exports as conversation data.
+Audio is kept in memory. Caption files are written when you export; `~/.local/state/live-sub/logs/` may also contain recognized text, and service startup replaces the ASR/translation logs while launcher/UI logs append. Treat logs and exports as conversation data.
 
 Closing the window leaves models loaded for the next conversation. To check or release them:
 
@@ -168,15 +168,21 @@ After installing the [prerequisites](INSTALL.md#1-prerequisites):
 ```
 
 Demo mode displays sample text without recording or loading models. For a full development setup, use `./bin/setup` without `--desktop`.
+Build, setup, test and source launch share a checkout-specific directory under
+`~/.local/share/live-sub/runtime/ui-build/` (or the configured XDG data directory).
+Use the same `LIVE_SUB_BUILD_DIR` for build and run to override it. After upgrading
+from the old `build/` layout, rebuild once; old binaries are retained but not selected.
 
 ```bash
 ./bin/test
 python3 tests/setup_tests.py
 # When the hotword environment is available:
-runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py
+~/.local/share/live-sub/runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py
 ```
 
 Qt tests cover segmentation, PCM/WAV, terminology, translation direction, output cleanup, and SSE parsing. Installation regressions use tiny fake downloads. For real local inference checks after setup, use `./bin/doctor --services --json` and `./bin/smoke-test --json`; neither replaces speaking into a microphone.
+
+Run `./bin/test-all` for the complete model-free Qt/QML, ASR HTTP, lifecycle, migration and installation regressions. See [system integration](SYSTEM-INTEGRATION.md) for independent packaging, private XDG paths, non-destructive migration and release acceptance.
 
 `src/` contains the app, `bin/` the setup and lifecycle tools, and `tests/` the regressions. Models, environments, logs, builds, sessions, and topic folders stay local and are excluded from Git. Optional Arch packaging via `./bin/install` is separate from the recommended source setup; see the [packaging reference (Chinese)](README.zh-CN.md#开发与可选安装).
 

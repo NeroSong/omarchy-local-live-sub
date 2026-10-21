@@ -73,4 +73,25 @@ class DecoderTests(unittest.TestCase):
             self.assertFalse(live.error)
             self.assertEqual(live.decoder.decode(probabilities), 'Omarchy')
 
+    def test_restoring_same_valid_bytes_after_oversized_config_clears_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'asr-config.json'
+            config = {'decoder':'hotword_ctc', 'threads':6, 'beam_size':4, 'acoustic_top_k':3,
+                      'max_token_log_gap':10.0, 'hotwords':[{'term':'Omarchy','score':6.0}]}
+            valid = json.dumps(config).encode()
+            path.write_bytes(valid)
+            live = LiveDecoderConfig(path, ['<blank>', '▁Omarchy', '▁other'], 0, config)
+            live.refresh()
+            decoder, revision = live.decoder, live.revision
+            path.write_bytes(b' ' * (256 * 1024 + 1))
+            live.refresh()
+            self.assertIn('exceeds 256 KiB', live.error)
+            self.assertIs(live.decoder, decoder)
+            self.assertEqual(live.revision, revision)
+            path.write_bytes(valid)
+            live.refresh()
+            self.assertEqual(live.error, '')
+            self.assertEqual(live.revision, revision)
+            self.assertEqual(live.config, config)
+
 if __name__ == '__main__': unittest.main()

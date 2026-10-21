@@ -1,36 +1,58 @@
 #!/usr/bin/env python3
-"""Stop only this project's model supervisor, after checking process identity."""
-import json
+"""Stop only the recorded model supervisor, after checking its process identity."""
+import argparse
 import os
 from pathlib import Path
 import signal
 import sys
 import time
 
-root = Path(__file__).resolve().parent.parent
-path = root / "runtime/models-process.json"
-try:
-    identity = json.loads(path.read_text())
-    pid = identity["pid"]
-    process = Path(f"/proc/{pid}")
-    ticks = (process / "stat").read_text().split()[21]
-    args = (process / "cmdline").read_bytes().split(b'\0')
-    cwd = process.joinpath("cwd").resolve()
-    if ticks != identity["start_ticks"] or not any((cwd / os.fsdecode(a)).resolve() == root / "bin/models-start" for a in args if a):
-        sys.exit("Process identity changed; no process was stopped.")
-    os.kill(pid, signal.SIGTERM)
-    print("Stopping this project's two model services.", flush=True)
-    deadline = time.monotonic() + 20
-    while process.exists():
+from app_paths import AppPaths
+from lifecycle import process_stat, read_owned
+
+
+def main():
+    argparse.ArgumentParser(description=__doc__).parse_args()
+    paths = AppPaths()
+    root = paths.root
+    path = paths.state / 'models-process.json'
+    record = read_owned(path, root)
+    if not record:
+        if path.exists():
+            raise RuntimeError('No matching supervisor identity. No process was stopped.')
+        print('No running model supervisor recorded for this project.')
+        return
+    pid, ticks = record['pid'], record['start_ticks']
+    # Linux pidfd closes the identity-check-to-signal PID reuse race when supported.
+    if hasattr(os, 'pidfd_open') and hasattr(signal, 'pidfd_send_signal'):
+        fd = os.pidfd_open(pid)
         try:
-            state = process.joinpath("stat").read_text().split()
-            if state[2] == "Z" or state[21] != ticks:
+            if read_owned(path, root) != record:
+                raise RuntimeError('Process identity changed; no process was stopped.')
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+        finally:
+            os.close(fd)
+    else:
+        if read_owned(path, root) != record:
+            raise RuntimeError('Process identity changed; no process was stopped.')
+        os.kill(pid, signal.SIGTERM)
+    print('Stopping this project\'s two model services.', flush=True)
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            state, current = process_stat(pid)
+            if state == 'Z' or current != ticks:
                 break
         except FileNotFoundError:
             break
         if time.monotonic() >= deadline:
-            sys.exit("Supervisor is still exiting; no additional process was killed. Wait before restarting.")
+            raise RuntimeError('Supervisor is still exiting; no additional process was killed. Wait before restarting.')
         time.sleep(0.1)
-    print("Model services stopped.")
-except FileNotFoundError:
-    print("No running model supervisor recorded for this project.")
+    print('Model services stopped.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError) as error:
+        sys.exit(str(error))

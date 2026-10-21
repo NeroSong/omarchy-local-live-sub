@@ -7,9 +7,11 @@
 #include <QFileInfo>
 #include <QTimer>
 #include <QStandardPaths>
+#include <QSaveFile>
 #include "backend.h"
 #include "theme.h"
 #include "translator.h"
+#include "privatestorage.h"
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("live-sub"); app.setApplicationVersion("0.1.0");
@@ -19,8 +21,15 @@ int main(int argc, char **argv) {
     const auto project = QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("..");
     const auto defaultRoot = QFileInfo::exists(project + "/glossary.json") ? project : QString("/usr/share/live-sub");
     const auto root = qEnvironmentVariable("LIVE_SUB_ROOT", defaultRoot);
-    const auto settingsPath = qEnvironmentVariable("LIVE_SUB_UI_SETTINGS", root == "/usr/share/live-sub"
-        ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/ui.ini" : root + "/runtime/ui.ini");
+    const auto settingsPath = qEnvironmentVariable("LIVE_SUB_UI_SETTINGS", PrivateStorage::stateDirectory() + "/ui.ini");
+    QString storageError;
+    const bool defaultSettings = !qEnvironmentVariableIsSet("LIVE_SUB_UI_SETTINGS") && !qEnvironmentVariableIsSet("LIVE_SUB_STATE_DIR");
+    if (QFileInfo(settingsPath).isSymLink()
+        || !PrivateStorage::ensureDirectory(QFileInfo(settingsPath).absolutePath(), storageError, defaultSettings)) {
+        if (storageError.isEmpty()) storageError = "Settings must not be a symbolic link: " + settingsPath;
+        qCritical("%s", qPrintable(storageError));
+        return 2;
+    }
     Translator translator(settingsPath);
     app.installTranslator(&translator);
     Backend backend(root, args.contains("--demo"));
@@ -43,7 +52,17 @@ int main(int argc, char **argv) {
     if (args.contains("--screenshot")) {
         QTimer::singleShot(1200, &app, [&] {
             auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
-            const bool ok = window && window->grabWindow().save(root + "/build/preview.png");
+            const auto destination = qEnvironmentVariable("LIVE_SUB_SCREENSHOT_PATH",
+                PrivateStorage::stateDirectory() + "/preview.png");
+            QString error;
+            const bool secured = !QFileInfo(destination).isSymLink()
+                && PrivateStorage::ensureDirectory(QFileInfo(destination).absolutePath(), error,
+                    !qEnvironmentVariableIsSet("LIVE_SUB_SCREENSHOT_PATH"));
+            QSaveFile preview(destination);
+            const bool ok = secured && window && preview.open(QIODevice::WriteOnly)
+                && preview.setPermissions(QFile::ReadOwner | QFile::WriteOwner)
+                && window->grabWindow().save(&preview, "PNG") && preview.commit();
+            if (!ok) qWarning("Could not save private preview: %s", qPrintable(destination));
             app.exit(ok ? 0 : 2);
         });
     }

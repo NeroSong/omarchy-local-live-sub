@@ -37,7 +37,7 @@ ApplicationWindow {
 
     function toggleCapture() {
         if (win.closeWhenIdle) return
-        if (backend.recording) { backend.stop(); return }
+        if (backend.recording || backend.starting) { backend.stop(); return }
         let input = backend.devices[microphone.currentIndex]
         win.follow = true
         settings.close()
@@ -48,7 +48,10 @@ ApplicationWindow {
     }
     function showSettings() { settings.open() }
     onClosing: function(close) {
-        if (!allowClose && backend.recording) {
+        if (!allowClose && backend.starting) {
+            // A pending health check must never acquire the microphone after closing.
+            backend.stop()
+        } else if (!allowClose && backend.recording) {
             close.accepted = false; quitDialog.open()
         } else if (!allowClose && backend.busy) {
             close.accepted = false
@@ -247,8 +250,8 @@ ApplicationWindow {
                 implicitWidth: Math.max(136, contentItem.implicitWidth + leftPadding + rightPadding)
                 implicitHeight: 40
                 leftPadding: 20; rightPadding: 20
-                enabled: backend.recording
-                text: qsTr("Stop captions")
+                enabled: backend.recording || backend.starting
+                text: backend.starting ? qsTr("Cancel startup") : qsTr("Stop captions")
                 font.pixelSize: 14; font.weight: Font.DemiBold
                 Material.foreground: enabled ? theme.foreground : theme.mutedForeground
                 background: Rectangle {
@@ -257,7 +260,7 @@ ApplicationWindow {
                     border.width: 1
                     border.color: parent.enabled ? (parent.hovered ? theme.accent : theme.secondaryForeground) : theme.border
                 }
-                Accessible.name: qsTr("Stop captions"); ToolTip.visible: hovered; ToolTip.text: backend.recording ? qsTr("Stop captions · Space") : qsTr("Finishing pending captions")
+                Accessible.name: text; ToolTip.visible: hovered; ToolTip.text: backend.starting ? qsTr("Cancel startup") : backend.recording ? qsTr("Stop captions · Space") : qsTr("Finishing pending captions")
                 onClicked: backend.stop()
             }
             Button {

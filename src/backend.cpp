@@ -2,6 +2,7 @@
 #include "translation.h"
 #include "translationstream.h"
 #include "agentcontext.h"
+#include "privatestorage.h"
 #include <memory>
 #include <QCoreApplication>
 #include <QDir>
@@ -149,7 +150,7 @@ void Backend::refreshDevices() {
     failure.clear(); enumerate.start("pactl", {"-f", "json", "list", "sources"});
 }
 void Backend::toggle(const QString &source, const QString &language, double threshold) {
-    if (active) { stop(); return; }
+    if (active || starting) { stop(); return; }
     if (busy() || capture.state() != QProcess::NotRunning || isDemo) return;
     failure.clear();
     refreshTerms();
@@ -165,14 +166,21 @@ void Backend::toggle(const QString &source, const QString &language, double thre
     if (!QStringList{"auto", "en", "zh"}.contains(language)) return;
     sourceLanguage = language; segmenter.reset(); segmenter.thresholdDb = threshold;
     starting = true; setMessage("Checking local recognition and translation services…"); emit changed();
+    const auto generation = ++startupGeneration;
     // Probe both models before acquiring the microphone.
     auto *asr = network.get(request(asrBase, "/"));
-    connect(asr, &QNetworkReply::finished, this, [this, asr, source] {
+    startupReply = asr;
+    connect(asr, &QNetworkReply::finished, this, [this, asr, source, generation] {
+        if (!starting || generation != startupGeneration) { asr->deleteLater(); return; }
+        startupReply.clear();
         const bool ok = asr->error() == QNetworkReply::NoError;
         asr->deleteLater();
         if (!ok) { starting = false; setFailure("Recognition is not ready. Run bin/models-start first."); return; }
         auto *tr = network.get(request(translationBase, "/health"));
-        connect(tr, &QNetworkReply::finished, this, [this, tr, source] {
+        startupReply = tr;
+        connect(tr, &QNetworkReply::finished, this, [this, tr, source, generation] {
+            if (!starting || generation != startupGeneration) { tr->deleteLater(); return; }
+            startupReply.clear();
             const bool ready = tr->error() == QNetworkReply::NoError;
             tr->deleteLater(); starting = false;
             if (!ready) { setFailure("Translation is not ready. Check the models-start logs."); return; }
@@ -204,6 +212,16 @@ void Backend::queueAudio(Segmenter::Update update) {
     recognizeNext(); emit changed();
 }
 void Backend::stop() {
+    if (starting) {
+        // Invalidate callbacks before abort(), which may emit finished synchronously.
+        starting = false;
+        ++startupGeneration;
+        auto reply = startupReply;
+        startupReply.clear();
+        if (reply) reply->abort();
+        setMessage("Caption startup cancelled"); emit changed();
+        return;
+    }
     if (!active) return;
     active = false; capture.terminate();
     QTimer::singleShot(1500, this, [this] { if (!active && capture.state() != QProcess::NotRunning) capture.kill(); });
@@ -352,16 +370,19 @@ bool Backend::restoreSession(const QString &path) {
 }
 void Backend::exportSession() {
     if (rows.isEmpty() || isDemo) return;
-    const auto defaultDir = root == "/usr/share/live-sub"
-        ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/sessions" : root + "/sessions";
+    const auto defaultDir = PrivateStorage::dataDirectory() + "/sessions";
     const auto dir = qEnvironmentVariable("LIVE_SUB_SESSIONS", defaultDir);
-    if (!QDir().mkpath(dir)) { setFailure("Cannot create export directory: %1", {dir}); return; }
+    QString storageError;
+    if (!PrivateStorage::ensureDirectory(dir, storageError, !qEnvironmentVariableIsSet("LIVE_SUB_SESSIONS"))) {
+        setFailure("Cannot secure export directory: %1", {storageError}); return;
+    }
     const auto name = "session-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss-zzz") + "-" + QUuid::createUuid().toString(QUuid::Id128).left(8) + ".json";
     QSaveFile file(dir + "/" + name);
     const QJsonObject output{{"exported_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
         {"captions", QJsonArray::fromVariantList(rows)}, {"format_version", 1}};
     const auto bytes = QJsonDocument(output).toJson();
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+    if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFile::ReadOwner | QFile::WriteOwner)
+        || file.write(bytes) != bytes.size() || !file.commit()) {
         setFailure("Export failed: %1", {file.errorString()}); return;
     }
     dirty = false; setMessage("Exported: %1", {file.fileName()}); emit changed();

@@ -11,7 +11,9 @@ import sys
 import time
 import urllib.request
 
-from model_assets import asr_directory
+from model_assets import asr_directory, translation_path
+from app_paths import AppPaths
+from lifecycle import acquire_lock, atomic_json, identity, private_directory, private_open, remove_owned
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,44 +22,59 @@ def main():
     parser.add_argument("--cpu", action="store_true", help="disable GPU explicitly")
     parser.add_argument("--decoder", choices=["greedy", "hotword_ctc"], help="override asr-config.json; greedy restores the original sherpa-onnx path")
     args = parser.parse_args()
-    config_dir = Path(os.environ.get("LIVE_SUB_CONFIG_DIR", str(ROOT))).resolve()
+    paths = AppPaths(ROOT)
+    paths.initialize()
+    state = paths.state
+    try:
+        guard = acquire_lock(state / "models.lock", blocking=False)
+    except BlockingIOError:
+        raise RuntimeError("Model supervisor is already running or starting. No existing service was changed.")
+    # Keep the open flock across validation, startup and all child cleanup.
+    with guard:
+        supervise(paths, args)
+
+
+def supervise(paths, args):
+    state = paths.state
+    config_dir = paths.config
     asr_config = json.loads((config_dir / "asr-config.json").read_text())
     decoder = args.decoder or os.environ.get("SENSEVOICE_DECODER", asr_config["decoder"])
     if decoder not in ("greedy", "hotword_ctc"):
         raise ValueError("Unsupported decoder: " + decoder)
     child_env = os.environ.copy()
     child_env["SENSEVOICE_DECODER"] = decoder
-    manifest = ROOT / "runtime/manifest.json"
+    manifest = paths.runtime / "manifest.json"
     config = json.loads(manifest.read_text()) if manifest.exists() else {}
     cpu = args.cpu or config.get("acceleration") == "cpu"
-    asr_python = ROOT / ("runtime/hotword-venv/bin/python" if decoder == "hotword_ctc" else "runtime/sensevoice-venv/bin/python")
-    asr_server = ROOT / "bin/sensevoice-server"
-    llama = ROOT / "runtime/llama.cpp/build/bin/llama-server"
-    asr = asr_directory(ROOT)
-    translation = Path(os.environ.get("TRANSLATION_MODEL_PATH", ROOT / "models/translation.gguf"))
+    asr_python = paths.runtime / ("hotword-venv/bin/python" if decoder == "hotword_ctc" else "sensevoice-venv/bin/python")
+    asr_server = paths.root / "bin/sensevoice-server"
+    llama = paths.runtime / "llama.cpp/build/bin/llama-server"
+    asr = asr_directory(paths.root)
+    translation = translation_path(paths.root)
     for path in [asr_python, asr_server, llama, asr / "model.onnx", asr / "tokens.txt", translation]:
         if not path.is_file():
-            raise RuntimeError(f"Missing {path}. Run bin/bootstrap first.")
+            raise RuntimeError(f"Missing {path}. Run live-sub --setup (package) or ./bin/setup (source) first.")
     reservations = []
     try:
         for port in [8178, 8179]:
             sock = socket.socket()
-            sock.bind(("127.0.0.1", port))
             reservations.append(sock)
+            sock.bind(("127.0.0.1", port))
     except OSError as error:
         raise RuntimeError(f"Local model port is unavailable: {error}. No existing service was stopped.")
     finally:
         for sock in reservations:
             sock.close()
+    child_env["SENSEVOICE_MODEL_DIR"] = str(asr)
     commands = [
         [str(asr_python), str(asr_server)],
         [str(llama), "--host", "127.0.0.1", "--port", "8179", "-m", str(translation),
          "--alias", "translator", "-c", "4096", "-t", "6", "-ngl", "0" if cpu else "99", "--parallel", "1"]
     ]
-    (ROOT / "runtime/logs").mkdir(parents=True, exist_ok=True)
+    private_directory(paths.logs)
     children, logs = [], []
-    pidfile = ROOT / "runtime/models-process.json"
-    identity = {"pid": os.getpid(), "start_ticks": Path(f"/proc/{os.getpid()}/stat").read_text().split()[21]}
+    pidfile = state / "models-process.json"
+    record = identity(paths.root, config_dir)
     stopped = False
     def stop(_signal, _frame):
         nonlocal stopped
@@ -66,16 +83,19 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     try:
         for name, command in zip(["asr", "translation"], commands):
-            log = (ROOT / f"runtime/logs/{name}.log").open("w")
+            if stopped:
+                break
+            log = private_open(paths.logs / f"{name}.log", "w")
             logs.append(log)
             children.append(subprocess.Popen(command, stdout=log, stderr=log, env=child_env))
-        pidfile.write_text(json.dumps(identity) + "\n")
-        print(f"Loading models (SenseVoice {decoder} CPU + translation {'CPU' if cpu else 'Vulkan'}). Logs: {ROOT / 'runtime/logs'}", flush=True)
+        if not stopped:
+            atomic_json(pidfile, record)
+        print(f"Loading models (SenseVoice {decoder} CPU + translation {'CPU' if cpu else 'Vulkan'}). Logs: {paths.logs}", flush=True)
         deadline = time.monotonic() + 180
         ready = False
         while not stopped:
             if any(child.poll() is not None for child in children):
-                raise RuntimeError("A model process exited. Inspect runtime/logs; no automatic CPU fallback was used.")
+                raise RuntimeError("A model process exited. Inspect the private state logs directory; no automatic CPU fallback was used.")
             if not ready:
                 try:
                     # Bypass external proxies for local model checks.
@@ -88,7 +108,7 @@ def main():
                     print("Both models ready. Run bin/run. Ctrl+C here stops both model services.", flush=True)
                 except OSError:
                     if time.monotonic() > deadline:
-                        raise RuntimeError("Model startup timed out. Inspect runtime/logs.")
+                        raise RuntimeError("Model startup timed out. Inspect the private state logs directory.")
             time.sleep(0.5)
     finally:
         for child in children:
@@ -102,8 +122,7 @@ def main():
                 child.wait()
         for log in logs:
             log.close()
-        if pidfile.exists() and json.loads(pidfile.read_text()) == identity:
-            pidfile.unlink()
+        remove_owned(pidfile, record)
 
 if __name__ == "__main__":
     try:

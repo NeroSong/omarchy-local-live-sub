@@ -1,29 +1,42 @@
 pkgname=live-sub
 pkgver=0.1.0
-pkgrel=5
+pkgrel=6
 pkgdesc='Local bilingual captions for technical discussions'
-arch=('x86_64' 'aarch64')
+arch=('x86_64')
 license=('MIT')
 options=('!debug')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'ffmpeg' 'libpulse' 'qt6-svg' 'python' 'libnotify')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'qt6-svg' 'ffmpeg' 'libpulse' 'python' 'python-pip' 'libnotify' 'git' 'cmake' 'make' 'gcc' 'pkgconf' 'shaderc' 'vulkan-icd-loader')
 makedepends=('gcc' 'make')
+optdepends=('vulkan-tools: inspect GPU acceleration' 'vulkan-intel: Intel GPU Vulkan driver' 'vulkan-radeon: AMD GPU Vulkan driver')
 source=()
 sha256sums=()
 
 build() {
   cd "$startdir/.."
-  ./bin/build
+  LIVE_SUB_BUILD_DIR="$PWD/build" ./bin/build
 }
 
 package() {
   cd "$startdir/.."
-  install -Dm755 build/live-sub "$pkgdir/usr/bin/live-sub"
+  install -Dm755 build/live-sub "$pkgdir/usr/lib/live-sub/live-sub"
+  install -Dm755 bin/live-sub-launch "$pkgdir/usr/bin/live-sub"
   install -Dm755 bin/live-sub-launch "$pkgdir/usr/bin/live-sub-launch"
-  install -dm755 "$pkgdir/usr/share/live-sub"
-  printf '%s\n' "$PWD" > "$pkgdir/usr/share/live-sub/project-root"
-  install -Dm644 glossary.json "$pkgdir/usr/share/live-sub/glossary.json"
+  install -dm755 "$pkgdir/usr/share/live-sub/bin"
+  for script in start run models-start models-stop bootstrap setup doctor sensevoice-server smoke-test; do
+    install -m755 "bin/$script" "$pkgdir/usr/share/live-sub/bin/$script"
+  done
+  for module in app_paths.py lifecycle.py model_assets.py hotword_decoder.py asr_service.py; do
+    install -m644 "bin/$module" "$pkgdir/usr/share/live-sub/bin/$module"
+  done
+  for resource in glossary.json asr-config.json hotwords.candidates.json dependencies.lock.json requirements.txt requirements-hotwords.txt; do
+    install -m644 "$resource" "$pkgdir/usr/share/live-sub/$resource"
+  done
+  printf '{"layout": 1}\n' > "$pkgdir/usr/share/live-sub/package.json"
+  install -m644 pkgbuild/live-sub.svg "$pkgdir/usr/share/live-sub/live-sub.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/live-sub/LICENSE"
-  install -Dm644 README.md "$pkgdir/usr/share/doc/live-sub/README.md"
+  for document in README.md README.zh-CN.md INSTALL.md INSTALL.zh-CN.md SYSTEM-INTEGRATION.md; do
+    install -Dm644 "$document" "$pkgdir/usr/share/doc/live-sub/$document"
+  done
   install -Dm644 pkgbuild/live-sub.desktop "$pkgdir/usr/share/applications/live-sub.desktop"
   install -Dm644 pkgbuild/live-sub.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/live-sub.svg"
 }

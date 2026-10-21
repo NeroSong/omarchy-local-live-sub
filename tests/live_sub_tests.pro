@@ -1,4 +1,4 @@
-QT += core gui network testlib
+QT += core gui network testlib qml quick quickcontrols2
 CONFIG += c++17 testcase console
 TARGET = live_sub_tests
 INCLUDEPATH += ../src
@@ -12,3 +12,6 @@ HEADERS += ../src/translator.h ../src/agentcontext.h
 SOURCES += ../src/translator.cpp ../src/agentcontext.cpp
 HEADERS += ../src/theme.h
 SOURCES += ../src/theme.cpp
+HEADERS += ../src/privatestorage.h
+SOURCES += ../src/privatestorage.cpp
+RESOURCES += ../src/resources.qrc

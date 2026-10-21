@@ -1,5 +1,9 @@
-#!/bin/sh
-set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-export LIVE_SUB_ROOT="$ROOT"
-exec "$ROOT/build/live-sub" "$@"
+#!/usr/bin/env python3
+"""Run the caption UI with private XDG configuration and state."""
+import os
+import sys
+from app_paths import AppPaths
+
+paths = AppPaths()
+paths.initialize()
+os.execv(str(paths.binary), [str(paths.binary), *sys.argv[1:]])

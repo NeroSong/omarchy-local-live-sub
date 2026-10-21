@@ -31,6 +31,9 @@ class LiveDecoderConfig:
             with self.path.open('rb') as source:
                 data = source.read(256 * 1024 + 1)
             if len(data) > 256 * 1024:
+                # Oversized data cannot be cached as a complete candidate. Forget
+                # the previous bytes so restoring them also clears this error.
+                self.seen = None
                 raise ValueError('ASR configuration exceeds 256 KiB')
             if data == self.seen:
                 return
