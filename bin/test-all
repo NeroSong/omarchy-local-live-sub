@@ -1,0 +1,16 @@
+#!/bin/sh
+# No model downloads, real inference or microphone capture. Fixtures use temporary directories.
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export PYTHONDONTWRITEBYTECODE=1
+PYTHON=${LIVE_SUB_TEST_PYTHON:-python3}
+"$ROOT/bin/test"
+for suite in setup lifecycle installation asr_service; do
+    "$PYTHON" "$ROOT/tests/${suite}_tests.py"
+done
+RUNTIME=${LIVE_SUB_RUNTIME_DIR:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/live-sub/runtime"}
+if [ -x "$RUNTIME/hotword-venv/bin/python" ]; then
+    "$RUNTIME/hotword-venv/bin/python" "$ROOT/tests/hotword_decoder_tests.py"
+else
+    "$PYTHON" "$ROOT/tests/hotword_decoder_tests.py"
+fi

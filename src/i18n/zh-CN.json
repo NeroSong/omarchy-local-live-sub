@@ -84,5 +84,8 @@
   "Vocabulary update failed: %1": "词表更新失败：%1",
   "Space  Start / stop captions\nF11  Full screen    Esc  Return to window\nCtrl+,  Settings    Ctrl+S  Export\nPageUp / PageDown  Review    End  Follow latest\nQ  Quit    ?  Help\n\nOriginal text updates about every 2 seconds. Translation begins after a pause of about 0.9 seconds; continuous speech is split after 18 seconds. Chinese and English are detected automatically.\n\nAudio is not saved. Captions are saved only when exported. Open the default Agent from Settings to discuss topic vocabulary. Valid changes apply to subsequent tasks; invalid changes keep the previous configuration.": "Space  开始 / 结束字幕\nF11  全屏    Esc  返回窗口\nCtrl+,  设置    Ctrl+S  导出文字\nPageUp / PageDown  回看    End  跟随最新\nQ  退出    ?  帮助\n\n原文约每 2 秒更新，停顿约 0.9 秒后开始翻译；连续发言最长 18 秒。默认自动识别中英文。\n\n不保存录音，仅主动导出时保存字幕。可在设置中打开默认 Agent，讨论和调整主题词表。有效配置用于后续任务；配置有误时保留上一份有效配置。",
   "Decrease text size": "减小字号",
-  "Increase text size": "增大字号"
+  "Increase text size": "增大字号",
+  "Cancel startup": "取消启动",
+  "Caption startup cancelled": "字幕启动已取消",
+  "Cannot secure export directory: %1": "无法确保导出目录的私密权限：%1"
 }

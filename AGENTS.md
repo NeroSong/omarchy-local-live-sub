@@ -20,7 +20,7 @@ This repository is a C++ / Qt Quick application for local Chinese–English micr
 
 ## Development checks
 
-Use `rg` to find code. Build with `./bin/build`, run Qt tests with `./bin/test`, installation regressions with `python3 tests/setup_tests.py`, and decoder regressions with `runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py` when that environment is available. Installation regressions use tiny fake downloads, not model downloads. Scope checks to the change; do not repeat full downloads or full installation unless explicitly requested.
+Use `rg` to find code. Build with `./bin/build`, run Qt tests with `./bin/test`, installation regressions with `python3 tests/setup_tests.py`, and decoder regressions with `~/.local/share/live-sub/runtime/hotword-venv/bin/python tests/hotword_decoder_tests.py` when that environment is available. Installation regressions use tiny fake downloads, not model downloads. Run `./bin/test-all` for all model-free Qt/QML, HTTP, lifecycle and installation/migration regressions. User data now uses XDG directories; inspect `./bin/live-sub-launch --paths` and read SYSTEM-INTEGRATION.md before changing paths or packaging. Scope checks to the change; do not repeat full downloads or full installation unless explicitly requested.
 
 Keep UI strings in the Translator/localization system and colors in Theme; check both English/Chinese and dark/light presentation when changing UI. Preserve separate original/translation displays, real-time font adjustment and raw recognition/correction metadata.
 

@@ -6,6 +6,9 @@ import shutil
 import time
 import urllib.request
 
+from app_paths import AppPaths
+from lifecycle import private_directory, private_open
+
 ASR_REPO = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17'
 ASR_FILES = ('model.onnx', 'tokens.txt')
 
@@ -14,10 +17,25 @@ def asr_directory(root, environ=None, home=None):
     environ = os.environ if environ is None else environ
     if environ.get('SENSEVOICE_MODEL_DIR'):
         return Path(environ['SENSEVOICE_MODEL_DIR']).expanduser().resolve()
-    bundled = root / 'models/sensevoice-small-fp32'
-    local = (Path.home() if home is None else home) / '.local/share/voxtype/models/sensevoice-small-fp32'
-    for candidate in (bundled, local):
-        if all((candidate / name).is_file() for name in ASR_FILES):
+    paths = AppPaths(root, environ, home)
+    bundled = paths.models / 'sensevoice-small-fp32'
+    local = paths.home / '.local/share/voxtype/models/sensevoice-small-fp32'
+    legacy = paths.legacy / 'models/sensevoice-small-fp32' if paths.legacy else None
+    for candidate in (bundled, legacy, local):
+        if candidate and all((candidate / name).is_file() for name in ASR_FILES):
+            return candidate
+    return bundled
+
+
+def translation_path(root, environ=None, home=None):
+    environ = os.environ if environ is None else environ
+    if environ.get('TRANSLATION_MODEL_PATH'):
+        return Path(environ['TRANSLATION_MODEL_PATH']).expanduser().resolve()
+    paths = AppPaths(root, environ, home)
+    bundled = paths.models / 'translation.gguf'
+    legacy = paths.legacy / 'models/translation.gguf' if paths.legacy else None
+    for candidate in (bundled, legacy):
+        if candidate and candidate.is_file():
             return candidate
     return bundled
 
@@ -34,7 +52,7 @@ def download_verified(url, destination, expected, size=None):
     """Resume when supported; a full response restarts the partial file safely."""
     if len(expected) != 64 or any(c not in '0123456789abcdef' for c in expected):
         raise ValueError('A SHA256 checksum is required before downloading')
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    private_directory(destination.parent)
     if destination.is_file() and checksum(destination) == expected:
         print(f'Verified {destination.name}', flush=True)
         return
@@ -58,7 +76,7 @@ def download_verified(url, destination, expected, size=None):
                     mode = 'wb'
                 else:
                     raise RuntimeError(f'Unexpected download status: {response.status}')
-                with partial.open(mode) as output:
+                with private_open(partial, mode) as output:
                     shutil.copyfileobj(response, output, length=4 * 1024 * 1024)
                     output.flush()
                     os.fsync(output.fileno())

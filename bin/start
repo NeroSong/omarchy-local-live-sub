@@ -8,11 +8,19 @@ import sys
 import time
 import urllib.request
 
-root = Path(__file__).resolve().parent.parent
-os.environ['LIVE_SUB_PROJECT'] = str(root)
-os.environ['LIVE_SUB_CONFIG_DIR'] = str(Path(os.environ.get('LIVE_SUB_CONFIG_DIR', str(root))).resolve())
-logs = root / "runtime/logs"
-logs.mkdir(parents=True, exist_ok=True)
+from app_paths import AppPaths
+from lifecycle import acquire_lock, private_directory, private_open, read_owned
+
+paths = AppPaths()
+root = paths.root
+if '--help' in sys.argv or '-h' in sys.argv:
+    print('Usage: start [--status] [Qt window options]\nStarts private local model services and the caption window. Use setup --help for preparation.')
+    sys.exit(0)
+try:
+    paths.initialize()
+except (OSError, RuntimeError, ValueError) as error:
+    sys.exit(str(error))
+logs = paths.logs
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def ready():
     try:
@@ -22,23 +30,14 @@ def ready():
                     return False
                 if url.endswith('8178/'):
                     actual = json.load(response).get('config_directory')
-                    if actual != os.environ['LIVE_SUB_CONFIG_DIR']:
+                    if actual != str(paths.config.resolve()):
                         raise RuntimeError('ASR service uses a different or older configuration. Stop capture, export captions, then run bin/models-stop and restart bin/start.')
         return True
     except OSError:
         return False
 
 def owned():
-    try:
-        info = json.loads((root / "runtime/models-process.json").read_text())
-        process = Path(f"/proc/{info['pid']}")
-        ticks_match = process.joinpath("stat").read_text().split()[21] == info["start_ticks"]
-        cwd = process.joinpath("cwd").resolve()
-        arguments = process.joinpath("cmdline").read_bytes().split(b'\0')
-        script_match = any((cwd / os.fsdecode(arg)).resolve() == root / "bin/models-start" for arg in arguments if arg)
-        return ticks_match and script_match
-    except (OSError, ValueError, KeyError):
-        return False
+    return read_owned(paths.state / "models-process.json", root, os.environ['LIVE_SUB_CONFIG_DIR']) is not None
 
 if "--status" in sys.argv:
     try:
@@ -49,10 +48,11 @@ if "--status" in sys.argv:
     sys.exit(0 if available and tracked else 1)
 
 try:
+    startup_guard = acquire_lock(paths.state / "start.lock")
     supervisor = None
     if not ready():
         if not owned():
-            with (logs / "supervisor.log").open("w") as output:
+            with private_open(logs / "supervisor.log", "a") as output:
                 supervisor = subprocess.Popen([str(root / "bin/models-start")], cwd=root, stdin=subprocess.DEVNULL,
                     stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
         print("Loading local models…", flush=True)
@@ -63,8 +63,9 @@ try:
             time.sleep(0.5)
     elif not owned():
         sys.exit("Ports are served by an untracked process. No existing service was changed.")
-    with (logs / "ui.log").open("w") as output:
-        window = subprocess.Popen([os.environ.get("LIVE_SUB_UI_BINARY", str(root / "bin/run")), *sys.argv[1:]], cwd=root, stdin=subprocess.DEVNULL,
+    startup_guard.close()
+    with private_open(logs / "ui.log", "a") as output:
+        window = subprocess.Popen([str(paths.binary), *sys.argv[1:]], cwd=root, stdin=subprocess.DEVNULL,
             stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
     time.sleep(1)
     if window.poll() is not None:

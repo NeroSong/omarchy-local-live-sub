@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-mkdir -p "$ROOT/build"
-cd "$ROOT/build"
+BUILD=$(PYTHONPATH="$ROOT/bin" python3 -B -c 'import sys; from app_paths import AppPaths; print(AppPaths(sys.argv[1]).build)' "$ROOT")
+umask 077
+mkdir -p "$BUILD"
+cd "$BUILD"
 qmake6 "$ROOT/live-sub.pro"
 make -j"${BUILD_JOBS:-4}"

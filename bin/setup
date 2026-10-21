@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from app_paths import AppPaths
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -22,9 +24,12 @@ def install_desktop(root=ROOT, data_home=None):
     data_home = Path(data_home) if data_home is not None else Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
     destination = data_home / 'applications/live-sub.desktop'
     destination.parent.mkdir(parents=True, exist_ok=True)
+    packaged = (root / 'package.json').is_file()
+    command = root.parents[1] / 'bin/live-sub' if packaged else root / 'bin/live-sub-launch'
+    icon = root / 'live-sub.svg' if packaged else root / 'pkgbuild/live-sub.svg'
     entry = ('[Desktop Entry]\nType=Application\nName=Omarchy Local Live Sub\nName[zh_CN]=本地双语字幕\n'
              'Comment=Local Chinese-English captions and translation\nTerminal=false\nCategories=Utility;AudioVideo;\n'
-             f'Exec={desktop_quote(str(root / "bin/start"))}\nIcon={root / "pkgbuild/live-sub.svg"}\n'
+             f'Exec={desktop_quote(str(command))}\nIcon={icon}\n'
              'StartupWMClass=live-sub\n')
     if destination.exists():
         destination.with_suffix('.desktop.bak').write_bytes(destination.read_bytes())
@@ -32,30 +37,41 @@ def install_desktop(root=ROOT, data_home=None):
     temporary.write_text(entry)
     temporary.replace(destination)
     print(f'Launcher installed for this user: {destination}')
-    print(f'Keep the project directory at: {root}')
+    if not packaged:
+        print(f'Source launcher resources: {root}. A packaged launcher does not depend on this checkout.')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cpu', action='store_true', help='explicit CPU-only translation fallback')
     parser.add_argument('--desktop', action='store_true', help='add a user launcher entry after setup succeeds; no Arch package')
-    parser.add_argument('--download-asr', action='store_true', help='prepare a project-local ASR model even if Voxtype already has one')
+    parser.add_argument('--download-asr', action='store_true', help='prepare a user-cache ASR model even if Voxtype already has one')
+    parser.add_argument('--migrate-from', type=Path, help='copy missing configuration, settings and sessions from an old checkout; never delete originals')
+    parser.add_argument('--migrate-only', action='store_true', help='initialize user directories and migrate without downloads, builds or system changes')
     args = parser.parse_args()
     if os.geteuid() == 0:
         sys.exit('Run setup as the normal desktop user, not with sudo. INSTALL.md lists prerequisite packages.')
+    if args.migrate_from:
+        if not args.migrate_from.is_dir():
+            parser.error('--migrate-from must be an existing checkout directory')
+        os.environ['LIVE_SUB_LEGACY_ROOT'] = str(args.migrate_from.resolve())
+    paths = AppPaths(ROOT)
+    paths.initialize()
+    if args.migrate_only:
+        print(f'User data prepared at {paths.data}; original files retained. Existing environments are not relocated; rerun setup to build a fresh runtime.')
+        return
     result = subprocess.run([sys.executable, str(ROOT / 'bin/doctor'), '--preflight', *(['--cpu'] if args.cpu else [])])
     if result.returncode != 0:
         sys.exit('Prerequisites are missing. Follow INSTALL.md, then rerun this command.')
     subprocess.run([sys.executable, str(ROOT / 'bin/bootstrap'), *(['--cpu'] if args.cpu else []), *(['--download-asr'] if args.download_asr else [])], check=True)
-    subprocess.run([str(ROOT / 'bin/test')], check=True)
-    subprocess.run([str(ROOT / 'runtime/hotword-venv/bin/python'), str(ROOT / 'tests/hotword_decoder_tests.py')], check=True)
-    subprocess.run([sys.executable, str(ROOT / 'tests/setup_tests.py')], check=True)
+    if not paths.packaged:
+        subprocess.run([str(ROOT / 'bin/test-all')], check=True)
     if args.desktop:
         install_desktop()
-    print('Setup complete. Open the launcher or run ./bin/start. Real microphone acceptance is still required; see INSTALL.md.')
+    print(f'Setup complete. Runtime: {paths.runtime}; logs: {paths.logs}. Open live-sub (package) or ./bin/start (source). Real microphone acceptance is still required; see INSTALL.md.')
 
 if __name__ == '__main__':
     try:
         main()
-    except (OSError, ValueError, subprocess.SubprocessError) as error:
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         sys.exit(f'Setup failed: {error}')

@@ -52,7 +52,7 @@ For an existing checkout, inspect local changes first; preserve vocabulary and c
 ### Models and safe recovery
 
 - Recognition uses pinned [SenseVoice FP32](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17); translation uses [Hy-MT2-1.8B Q8_0](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF). Revisions, filenames, sizes, and SHA256 checksums are in [dependencies.lock.json](dependencies.lock.json).
-- Missing models download to `models/`. A complete project-local recognition model takes priority. Otherwise, an existing Voxtype model can be verified and reused read-only. Voxtype is not required.
+- Missing models download to `~/.cache/live-sub/models/`. A complete cached recognition model takes priority; old checkout models can be verified and reused read-only. Otherwise, an existing Voxtype model can be verified and reused read-only. Voxtype is not required.
 - If Voxtype's model differs from the pinned version, preserve it and run `./bin/setup --desktop --download-asr` to prepare a separate project model. If `SENSEVOICE_MODEL_DIR` is set, inspect and unset that override first; scripts do not download into that external directory.
 - Rerun the same command after an interrupted download. Scripts attempt to resume `.part` files; a server without resume support requires that file to restart. Files become final only after checksum verification, and valid cached models are not downloaded again. Stop on checksum mismatches; do not bypass checks or substitute another quantization or an unknown mirror.
 - For network failures, keep the error and progress, fix connectivity or the proxy, and retry. Public models require no token. Keep proxy passwords and other credentials out of the repository.
@@ -95,7 +95,7 @@ Finish installation and a microphone trial before the actual conversation. Pause
 - The agent provider may use online services. The app does not automatically add captions, recordings, or logs to its prompt; decide what examples you want to share manually.
 - The default Omarchy glossary uses conservative correction and preserves ordinary phrases such as “how much.” Aggressive `force_phonetic` matching is opt-in for specialized topics and can overcorrect. Check `raw` and correction records, retain the `come` protection, and discuss policy changes with the person using the app.
 - Valid vocabulary edits reload during use; invalid edits retain the running process's last valid configuration. Changing decoder/thread settings or the configuration directory requires stopping and restarting project model services. Completed captions are not rewritten.
-- Exports from this checkout are saved in `sessions/`. Logs in `runtime/logs/` may also contain recognition text. Keep real conversation data out of Git and public bug reports.
+- Exports are saved in `~/.local/share/live-sub/sessions/`. Logs in `~/.local/state/live-sub/logs/` may also contain recognition text. Keep real conversation data out of Git and public bug reports.
 
 ## 5. Troubleshooting
 
@@ -105,8 +105,8 @@ Finish installation and a microphone trial before the actual conversation. Pause
 | Unsupported Python version or wheel | Use Python 3.12–3.14 for the project environments. Do not replace the system Python symlink or use `sudo pip`. |
 | Vulkan unavailable | Check the drivers for your GPU and `vulkaninfo --summary`. A hardware device must be visible; llvmpipe/lavapipe software devices do not establish GPU readiness. Use the explicit CPU fallback below if needed. |
 | Missing microphone / Pulse connection refused | Run in the logged-in desktop user's terminal. Check the physical connection and `pactl -f json list sources`. Missing access in SSH, a container, or a sandbox does not prove a host fault. |
-| Window does not appear | Check `runtime/logs/ui.log`, desktop-session environment, and Qt Wayland dependencies. Demo mode checks the UI only. |
-| Model startup fails | Check `runtime/logs/supervisor.log`, `asr.log`, and `translation.log`. Preserve the specific error; do not silently switch models. |
+| Window does not appear | Check `~/.local/state/live-sub/logs/ui.log`, desktop-session environment, and Qt Wayland dependencies. Demo mode checks the UI only. |
+| Model startup fails | Check `~/.local/state/live-sub/logs/supervisor.log`, `asr.log`, and `translation.log`. Preserve the specific error; do not silently switch models. |
 | Ports 8178/8179 occupied | Check ownership with `./bin/start --status`. Use `./bin/models-stop` only for matching project-managed services. Do not broadly kill Python or llama processes. |
 | Configuration-directory mismatch / old service | Stop capture, wait, export, run `./bin/models-stop`, then start again. Use the same `LIVE_SUB_CONFIG_DIR` for the selected topic. |
 | Vocabulary edit has no effect | Check vocabulary revisions/errors in settings and recognition-service health. Save complete, valid JSON and test with a new utterance. |
@@ -139,4 +139,4 @@ Once both models are ready, run `./bin/run` in another terminal. Use `--decoder 
 
 Use `./bin/models-stop` when you no longer need the models in memory. Closing the caption window alone leaves them running. Stop capture, drain queued work, and export first.
 
-To remove the user launcher, delete `~/.local/share/applications/live-sub.desktop` (or its equivalent under a custom `XDG_DATA_HOME`). Before deleting the checkout, back up `glossary.json`, `asr-config.json`, `topics/`, and any needed captions.
+To remove the user launcher, delete `~/.local/share/applications/live-sub.desktop` (or its equivalent under a custom `XDG_DATA_HOME`). The standalone package no longer depends on a checkout. Stop its models with `live-sub --stop` before removing the package; user configuration, captions, runtime and models are retained. Before removing an old checkout, check whether its verified models are still being reused. See [system integration and migration](SYSTEM-INTEGRATION.md) for the exact XDG directories and non-destructive migration commands.

@@ -11,7 +11,8 @@ import subprocess
 import sys
 import urllib.request
 
-from model_assets import ASR_REPO, ASR_FILES, asr_directory, checksum
+from model_assets import ASR_REPO, ASR_FILES, asr_directory, translation_path, checksum
+from app_paths import AppPaths
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ('git', 'cmake', 'make', 'g++', 'pkg-config', 'ffmpeg', 'pactl', 'qmake6')
@@ -20,6 +21,7 @@ INTEL_PACKAGES = 'mesa vulkan-intel vulkan-icd-loader vulkan-tools shaderc'
 
 
 def inspect(preflight=False, cpu=False, services=False, verify_models=False):
+    paths = AppPaths(ROOT)
     checks = []
     def add(name, status, detail):
         checks.append({'name': name, 'status': status, 'detail': detail})
@@ -28,7 +30,7 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
     add('platform', 'ok' if sys.platform == 'linux' and platform.machine() == 'x86_64' else 'error',
         f'{sys.platform} {platform.machine()}; the handoff target is x86_64 Omarchy / Arch Linux')
     add('python', 'ok' if (3, 12) <= sys.version_info[:2] <= (3, 14) else 'error', platform.python_version() + '; Python 3.12-3.14 required')
-    missing = [tool for tool in TOOLS if not shutil.which(tool)]
+    missing = [tool for tool in TOOLS if not (paths.packaged and tool == 'qmake6') and not shutil.which(tool)]
     add('build_tools', 'error' if missing else 'ok', 'Missing: ' + ', '.join(missing) if missing else 'Build and audio tools found')
     add('dependency_command', 'info', 'sudo pacman -S --needed ' + BASE_PACKAGES + ('' if cpu else ' ' + INTEL_PACKAGES))
     if not cpu:
@@ -43,7 +45,7 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
             except (OSError, subprocess.TimeoutExpired) as error:
                 add('vulkan', 'error', str(error))
         else:
-            engine = ROOT / 'runtime/llama.cpp/build/bin/llama-server'
+            engine = paths.runtime / 'llama.cpp/build/bin/llama-server'
             if engine.is_file():
                 try:
                     gpu = run([str(engine), '--list-devices'])
@@ -55,11 +57,15 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
                     add('vulkan', 'error', str(error))
             else:
                 add('vulkan', 'warning', 'vulkaninfo is missing; install vulkan-tools to verify the GPU before building')
-    free = shutil.disk_usage(ROOT).free // (1024 ** 3)
+    available_path = paths.data
+    while not available_path.exists():
+        available_path = available_path.parent
+    free = shutil.disk_usage(available_path).free // (1024 ** 3)
+    add("user_paths", "info", json.dumps(paths.values()))
     add('free_space', 'warning' if free < (12 if preflight else 2) else 'ok', f'{free} GiB available; 20 GiB recommended before setup')
     if preflight:
         return checks
-    config = Path(os.environ.get('LIVE_SUB_CONFIG_DIR', str(ROOT))).expanduser().resolve()
+    config = paths.config
     for name, expected_type in [('glossary.json', list), ('asr-config.json', dict)]:
         try:
             value = json.loads((config / name).read_text())
@@ -73,7 +79,7 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
     except (OSError, ValueError, KeyError):
         decoder = 'hotword_ctc'
     environment = 'hotword-venv' if decoder == 'hotword_ctc' else 'sensevoice-venv'
-    python = ROOT / 'runtime' / environment / 'bin/python'
+    python = paths.runtime / environment / 'bin/python'
     modules = 'import numpy, onnxruntime, kaldi_native_fbank' if decoder == 'hotword_ctc' else 'import numpy, sherpa_onnx'
     try:
         result = run([str(python), '-c', modules])
@@ -81,12 +87,12 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
             str(python) if result.returncode == 0 else result.stderr[-1200:])
     except (OSError, subprocess.TimeoutExpired) as error:
         add('inference_dependencies', 'error', str(error))
-    for name, path in [('application', ROOT / 'build/live-sub'), ('translation_server', ROOT / 'runtime/llama.cpp/build/bin/llama-server')]:
+    for name, path in [('application', paths.binary), ('translation_server', paths.runtime / 'llama.cpp/build/bin/llama-server')]:
         add(name, 'ok' if path.is_file() and os.access(path, os.X_OK) else 'error', str(path))
     pinned = json.loads((ROOT / 'dependencies.lock.json').read_text())
     asr = asr_directory(ROOT)
     assets = [(asr / name, pinned[ASR_REPO]['files'][name]['sha256']) for name in ASR_FILES]
-    assets.append((Path(os.environ.get('TRANSLATION_MODEL_PATH', str(ROOT / 'models/translation.gguf'))), pinned['tencent/Hy-MT2-1.8B-GGUF']['sha256']))
+    assets.append((translation_path(ROOT), pinned['tencent/Hy-MT2-1.8B-GGUF']['sha256']))
     for path, expected in assets:
         if not path.is_file():
             add(path.name, 'error', f'Missing {path}; run ./bin/setup')
@@ -108,7 +114,7 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
             try:
                 with opener.open(url, timeout=5) as response:
                     value = json.load(response)
-                if name == 'recognition_service' and value.get('config_directory') != str(config):
+                if name == 'recognition_service' and value.get('config_directory') != str(config.resolve()):
                     raise ValueError('Recognition service belongs to another configuration directory')
                 add(name, 'ok', url)
             except (OSError, ValueError) as error:

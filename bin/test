@@ -1,8 +1,14 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-mkdir -p "$ROOT/build/tests"
-cd "$ROOT/build/tests"
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+    export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
+fi
+BUILD=$(PYTHONPATH="$ROOT/bin" python3 -B -c 'import sys; from app_paths import AppPaths; print(AppPaths(sys.argv[1]).build)' "$ROOT")
+umask 077
+mkdir -p "$BUILD/tests"
+cd "$BUILD/tests"
 qmake6 "$ROOT/tests/live_sub_tests.pro"
 make -j"${BUILD_JOBS:-4}"
 ./live_sub_tests

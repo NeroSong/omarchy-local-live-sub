@@ -6,12 +6,14 @@
 #include <QVariantList>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QPointer>
 #include "segmenter.h"
 #include "terms.h"
 
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool recording READ recording NOTIFY changed)
+    Q_PROPERTY(bool starting READ startingCapture NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(bool demo READ demo CONSTANT)
     Q_PROPERTY(bool unsaved READ unsaved NOTIFY changed)
@@ -28,6 +30,7 @@ public:
     explicit Backend(QString root, bool demo = false, QObject *parent = nullptr);
     ~Backend();
     bool recording() const { return active; }
+    bool startingCapture() const { return starting; }
     bool busy() const { return starting || capture.state() != QProcess::NotRunning || asrBusy || translationBusy || !audioQueue.isEmpty() || !textQueue.isEmpty(); }
     bool demo() const { return isDemo; }
     bool unsaved() const { return dirty; }
@@ -68,6 +71,8 @@ private:
     bool active = false, starting = false, asrBusy = false, translationBusy = false, isDemo = false, dirty = false;
     QProcess capture, enumerate, agentCheck;
     QNetworkAccessManager network;
+    QPointer<QNetworkReply> startupReply;
+    quint64 startupGeneration = 0;
     Segmenter segmenter;
     Terms terms;
     QVariantList inputs, rows;
