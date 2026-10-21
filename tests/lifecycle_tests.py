@@ -112,6 +112,31 @@ class LifecycleTests(unittest.TestCase):
             self.assertIn('ports', run.stderr)
             self.assertFalse((root / 'state/models-process.json').exists())
 
+    def test_restart_tolerates_time_wait_but_not_a_live_listener(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); env = self.fake_runtime(root)
+            port = int(env['LIVE_SUB_ASR_PORT'])
+            with socket.socket() as server:
+                server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                server.bind(('127.0.0.1', port)); server.listen()
+                client = socket.create_connection(('127.0.0.1', port)); peer, _ = server.accept()
+                busy = subprocess.run([sys.executable, str(root / 'bin/models-start'), '--cpu'], env=env, capture_output=True, text=True, timeout=8)
+                self.assertNotEqual(busy.returncode, 0)
+                self.assertIn('port is unavailable', busy.stderr)
+                self.assertFalse((root / 'state/models-process.json').exists())
+                peer.close(); client.close()  # server-side close leaves TIME_WAIT on the port
+            first = subprocess.Popen([sys.executable, str(root / 'bin/models-start'), '--cpu'], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                state = root / 'state/models-process.json'
+                deadline = time.monotonic() + 8
+                while not state.exists() and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(state.exists(), 'Supervisor refused a port that only had TIME_WAIT')
+            finally:
+                if first.poll() is None:
+                    first.send_signal(signal.SIGTERM); first.wait(timeout=15)
+                first.stdout.close()
+
     def test_second_child_spawn_failure_cleans_first_child_and_lock(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); env = self.fake_runtime(root)

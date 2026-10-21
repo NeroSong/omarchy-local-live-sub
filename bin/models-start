@@ -63,6 +63,8 @@ def supervise(paths, args):
         for port in ports:
             sock = socket.socket()
             reservations.append(sock)
+            # Connections that just closed leave TIME_WAIT; a live listener still fails the bind.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", port))
     except OSError as error:
         raise RuntimeError(f"Local model port is unavailable: {error}. No existing service was stopped.")
