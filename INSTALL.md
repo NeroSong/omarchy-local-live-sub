@@ -67,7 +67,7 @@ The user launcher points to this checkout's `bin/start`. Keep the directory; aft
 ./bin/start --settings
 ```
 
-Alternatively, search the launcher for **Omarchy Local Live Sub / 本地双语字幕**. Initial model loading takes time. Closing the window leaves model services available for reuse.
+Alternatively, search the launcher for **Omarchy Local Live Sub / 本地双语字幕**. Initial model loading takes time. Model services stay available for reuse and are released automatically after 15 idle minutes (`LIVE_SUB_IDLE_MINUTES`; 0 disables). Starting captions again reloads them on demand.
 
 From a terminal in the same desktop session:
 

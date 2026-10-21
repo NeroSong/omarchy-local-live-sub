@@ -136,7 +136,7 @@ Audio and caption text are processed on your machine. The default recognition an
 
 Audio is kept in memory. Caption files are written when you export; `~/.local/state/live-sub/logs/` may also contain recognized text, and service startup replaces the ASR/translation logs while launcher/UI logs append. Treat logs and exports as conversation data.
 
-Closing the window leaves models loaded for the next conversation. To check or release them:
+Models are released automatically after 15 minutes without captions (about 1.5 GB of RAM for recognition, plus the translation model). While captions are running, the app keeps them alive during quiet stretches; when you start captions again after a release, the app reloads the models, which takes a short moment. Set `LIVE_SUB_IDLE_MINUTES` (0 keeps them loaded until stopped) to change this. To check or release them immediately:
 
 ```bash
 ./bin/start --status

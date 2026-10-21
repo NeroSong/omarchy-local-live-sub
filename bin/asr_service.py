@@ -24,8 +24,10 @@ class ASRService:
     a config refresh, the initial decode, and an optional Chinese fallback decode.
     The decode callback receives mono 16 kHz PCM16 bytes, not a model dependency.
     """
-    def __init__(self, decode, refresh_config, metadata):
+    def __init__(self, decode, refresh_config, metadata, clock=time.monotonic):
         self.decode = decode
+        self._clock = clock
+        self._activity = clock()
         self.refresh_config = refresh_config
         self.metadata = deepcopy(metadata)
         self._inference = threading.Lock()
@@ -37,6 +39,12 @@ class ASRService:
         self._status = deepcopy(self.refresh_config())
         return deepcopy(self._status)
 
+    def touch(self):
+        self._activity = self._clock()
+
+    def idle_seconds(self):
+        return max(0.0, self._clock() - self._activity)
+
     def health(self):
         # While inference uses a snapshot, report that snapshot rather than
         # modifying its decoder or waiting behind a potentially slow model.
@@ -45,12 +53,14 @@ class ASRService:
                 self._refresh()
             finally:
                 self._inference.release()
-        return {**deepcopy(self.metadata), **deepcopy(self._status)}
+        # Health checks are not activity: the supervisor polls this to release idle models.
+        return {**deepcopy(self.metadata), **deepcopy(self._status), 'idle_seconds': round(self.idle_seconds(), 1)}
 
     def infer(self, pcm, language):
         # No inference queue: concurrent callers get an explicit retryable error.
         if not self._inference.acquire(blocking=False):
             raise InferenceBusy('Recognition is busy; retry after the current request')
+        self.touch()
         try:
             status = self._refresh()
             result = dict(self.decode(pcm, language))
@@ -67,6 +77,7 @@ class ASRService:
             result.update(status)
             return result
         finally:
+            self.touch()
             self._inference.release()
 
 
@@ -240,6 +251,10 @@ class ASRHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._authorized():
             return
+        if self.path == '/keepalive':
+            # Sent by the app while capturing so quiet stretches are not mistaken for idleness.
+            self.server.service.touch()
+            return self.respond(200, {})
         if self.path != '/inference':
             return self.respond(404, {'error': 'Unknown endpoint'})
         if not self.server.uploads.acquire(blocking=False):

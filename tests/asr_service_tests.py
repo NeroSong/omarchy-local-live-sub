@@ -140,6 +140,30 @@ class ServiceTests(unittest.TestCase):
         data = response.read()
         return response.status, json.loads(data) if data else {}
 
+    def test_idle_time_counts_inference_and_keepalive_but_not_health(self):
+        now = [100.0]
+        service = ASRService(lambda pcm, language: {'text': 'x', 'language': 'en'},
+                             lambda: {'config_revision': 'r', 'config_error': '', 'hotwords': []},
+                             {'engine': 'sensevoice'}, clock=lambda: now[0])
+        self.server = BoundedASRServer(('127.0.0.1', 0), service, handler_class=QuietHandler, token='t')
+        self.server.read_started = queue.Queue()
+        self.address = self.server.server_address
+        self.server_thread = threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        self.server_thread.start()
+        auth = {'Authorization': 'Bearer t'}
+        now[0] += 600
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 600.0)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 600.0, 'Health polling must not count as activity')
+        self.assertEqual(self.request('POST', '/keepalive', headers=auth)[0], 200)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 0.0)
+        now[0] += 300
+        body, headers = audio_request()
+        self.assertEqual(self.request('POST', '/inference', body, {**headers, **auth})[0], 200)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 0.0)
+        now[0] += 5
+        self.assertEqual(self.request('POST', '/keepalive')[0], 401)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 5.0, 'Unauthorized keepalive must not reset idleness')
+
     def test_token_is_required_for_health_and_inference(self):
         decoded = []
         self.start(decode=lambda pcm, language: decoded.append(language) or {'text': 'x', 'language': 'en'}, token='secret')

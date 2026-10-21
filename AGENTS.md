@@ -16,7 +16,7 @@ This repository is a C++ / Qt Quick application for local Chinese–English micr
 - Services listen only on 127.0.0.1:8178 and :8179 and require the per-run bearer token in the private state directory; never print, log or commit it. `bin/models-stop` checks the project's supervisor identity. Do not free ports by broadly killing Python, ffmpeg or llama processes.
 - Models, runtime environments, logs, builds and sessions are local artifacts. Do not commit them or send meeting content to external services. The optional vocabulary Agent receives config guidance, not automatic meeting transcripts.
 - Before restarting services, stop capture, wait for queued work and let the user export anything needed. Preserve glossary.json, asr-config.json and topics/. Hot updates are documented in README.md; retain `come` protection and the conservative Omarchy default; enable aggressive forced correction only with user direction for a specialized topic.
-- The desktop launcher points to this checkout. Keep it in place or rerun setup after moving. Closing the window leaves model services running. Stopped captions close without confirmation; pending work drains before exit, and unexported content is not automatically persisted.
+- The desktop launcher points to this checkout. Keep it in place or rerun setup after moving. Closing the window leaves model services running until they are released after 15 idle minutes (`LIVE_SUB_IDLE_MINUTES`, 0 disables); starting captions restarts them on demand. Stopped captions close without confirmation; pending work drains before exit, and unexported content is not automatically persisted.
 
 ## Development checks
 

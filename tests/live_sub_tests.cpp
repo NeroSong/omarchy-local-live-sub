@@ -185,6 +185,112 @@ private slots:
         QVERIFY2(socket->readAll().toLower().contains("authorization: bearer secret-token\r\n"), "Probe must send the private token");
         backend.stop();
     }
+    static bool writeFile(const QString &path, const QByteArray &bytes, bool executable = false) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return false;
+        file.close();
+        return file.setPermissions(executable ? QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner : QFile::ReadOwner | QFile::WriteOwner);
+    }
+    static quint16 closedPort() {
+        QTcpServer probe;
+        return probe.listen(QHostAddress::LocalHost) ? probe.serverPort() : 0;
+    }
+    void releasedModelsAreRestartedOnDemandBeforeCapture() {
+        QTemporaryDir dir;
+        QVERIFY(writeFile(dir.filePath("glossary.json"), "[]"));
+        QVERIFY(writeFile(dir.filePath("pactl"), "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QVERIFY(writeFile(dir.filePath("ffmpeg"), "#!/bin/sh\nexit 1\n", true));
+        QVERIFY(writeFile(dir.filePath("start"), "#!/bin/sh\nprintf %s \"$*\" > \"$0.marker\"\nwhile [ ! -e \"$0.go\" ]; do sleep 0.05; done\n", true));
+        const auto port = closedPort();
+        QVERIFY(port != 0);
+        TestEnvironment env;
+        env.set("PATH", "/usr/bin:/bin:" + dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_START_COMMAND", dir.filePath("start").toUtf8());
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(port)).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(closedPort())).toUtf8());
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(QFile::exists(dir.filePath("start.marker")));
+        QCOMPARE(backend.status(), QString("Starting local models…"));
+        QVERIFY(backend.startingCapture());
+        auto markerText = [&] { QFile marker(dir.filePath("start.marker")); return marker.open(QIODevice::ReadOnly) ? marker.readAll() : QByteArray(); };
+        QTRY_COMPARE(markerText(), QByteArray("--services-only"));
+        QTcpServer asr; QVERIFY(asr.listen(QHostAddress::LocalHost, port));
+        QVERIFY(writeFile(dir.filePath("start.go"), ""));
+        QTRY_VERIFY2(asr.hasPendingConnections(), "The probe must run again after the models were started");
+        backend.stop();
+        QVERIFY(!backend.startingCapture());
+    }
+    void cancelDuringModelRestartStopsWaiting() {
+        QTemporaryDir dir;
+        QVERIFY(writeFile(dir.filePath("glossary.json"), "[]"));
+        QVERIFY(writeFile(dir.filePath("pactl"), "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QVERIFY(writeFile(dir.filePath("start"), "#!/bin/sh\nprintf x > \"$0.marker\"\nsleep 30\n", true));
+        TestEnvironment env;
+        env.set("PATH", "/usr/bin:/bin:" + dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_START_COMMAND", dir.filePath("start").toUtf8());
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(closedPort())).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(closedPort())).toUtf8());
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(QFile::exists(dir.filePath("start.marker")));
+        backend.stop();
+        QVERIFY(!backend.startingCapture());
+        QVERIFY(backend.error().isEmpty());
+        QCOMPARE(backend.status(), QString("Caption startup cancelled"));
+    }
+    void customModelAddressesAreNeverAutoStarted() {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("bin")));
+        QVERIFY(writeFile(dir.filePath("glossary.json"), "[]"));
+        QVERIFY(writeFile(dir.filePath("pactl"), "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QVERIFY(writeFile(dir.filePath("bin/start"), "#!/bin/sh\nprintf x > \"$0.marker\"\n", true));
+        TestEnvironment env;
+        env.set("PATH", "/usr/bin:/bin:" + dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.unset("LIVE_SUB_START_COMMAND");
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(closedPort())).toUtf8());
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(!backend.startingCapture());
+        QVERIFY(backend.error().contains("Recognition is not ready"));
+        QVERIFY(!QFile::exists(dir.filePath("bin/start.marker")));
+    }
+    void keepaliveReachesRecognitionWhileCapturing() {
+        QTemporaryDir dir;
+        QVERIFY(writeFile(dir.filePath("glossary.json"), "[]"));
+        QVERIFY(writeFile(dir.filePath("api-token"), "secret-token\n"));
+        QVERIFY(writeFile(dir.filePath("pactl"), "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QVERIFY(writeFile(dir.filePath("ffmpeg"), "#!/bin/sh\nexec sleep 30\n", true));
+        QTcpServer asr, translation;
+        QVERIFY(asr.listen(QHostAddress::LocalHost)); QVERIFY(translation.listen(QHostAddress::LocalHost));
+        TestEnvironment env;
+        env.set("PATH", "/usr/bin:/bin:" + dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_API_TOKEN_FILE", dir.filePath("api-token").toUtf8());
+        env.set("LIVE_SUB_KEEPALIVE_MS", "100");
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(asr.serverPort())).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(translation.serverPort())).toUtf8());
+        auto healthy = [](QTcpServer &server) {
+            QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 5000);
+            auto *socket = server.nextPendingConnection();
+            socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            socket->disconnectFromHost();
+        };
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        healthy(asr); healthy(translation);
+        QTRY_VERIFY(backend.recording());
+        QTRY_VERIFY_WITH_TIMEOUT(asr.hasPendingConnections(), 5000);
+        auto *socket = asr.nextPendingConnection();
+        QTRY_VERIFY(socket->bytesAvailable() > 0);
+        const auto request = socket->readAll().toLower();
+        QVERIFY2(request.startsWith("post /keepalive "), request.constData());
+        QVERIFY(request.contains("authorization: bearer secret-token\r\n"));
+        backend.stop();
+    }
     void startupCancellation_data() {
         QTest::addColumn<bool>("translationProbe");
         QTest::addColumn<bool>("toggleAgain");

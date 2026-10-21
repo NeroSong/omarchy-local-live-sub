@@ -115,4 +115,4 @@ cd omarchy-local-live-sub
 
 这会把翻译引擎重新构建为 CPU 模式并记录选择，速度需要重新试用。`bin/start` 没有 `--cpu` 选项；若只是临时禁用已构建 Vulkan 引擎的 GPU，可另开终端运行 `./bin/models-start --cpu`，待就绪后再启动应用。不要在原有字幕任务进行中切换。
 
-无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不停止常驻模型。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；独立安装包不再依赖构建时的源码目录，卸载保留 XDG 用户数据。删除旧项目前应确认没有继续复用其中的模型，并备份旧词表和字幕。[系统集成指南](SYSTEM-INTEGRATION.md) 说明了迁移、升级与卸载。
+无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不立即停止模型；无字幕 15 分钟后模型会自动释放（`LIVE_SUB_IDLE_MINUTES`，0 表示不自动释放），再次开始字幕时按需重新加载。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；独立安装包不再依赖构建时的源码目录，卸载保留 XDG 用户数据。删除旧项目前应确认没有继续复用其中的模型，并备份旧词表和字幕。[系统集成指南](SYSTEM-INTEGRATION.md) 说明了迁移、升级与卸载。

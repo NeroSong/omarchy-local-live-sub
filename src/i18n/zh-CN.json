@@ -46,6 +46,8 @@
   "Choose an available microphone first.": "请先选择可用麦克风。",
   "Checking local recognition and translation services…": "检查本地识别和翻译服务…",
   "Recognition is not ready. Run bin/models-start first.": "识别服务尚未就绪。请先运行 bin/models-start。",
+  "Starting local models…": "正在启动本地模型…",
+  "Local models could not start. Check supervisor.log in the state directory.": "本地模型启动失败。请查看状态目录中的 supervisor.log。",
   "Translation is not ready. Check the models-start logs.": "翻译服务尚未就绪。请查看 models-start 日志。",
   "Listening · original first, translation follows": "正在聆听 · 原文先显示，译文随后补齐",
   "Processing is falling behind. Recording stopped to preserve queued audio. Wait for completion before restarting.": "模型处理积压，已停止收音以保留现有片段。完成后可重新开始；请换用更快模型。",

@@ -47,6 +47,76 @@ class LifecycleTests(unittest.TestCase):
         env.update(LIVE_SUB_ASR_PORT=str(free_port()), LIVE_SUB_TRANSLATION_PORT=str(free_port()), LIVE_SUB_ROOT=str(root), LIVE_SUB_CONFIG_DIR=str(root), LIVE_SUB_STATE_DIR=str(root / 'state'), LIVE_SUB_DATA_DIR=str(root / 'data'), LIVE_SUB_CACHE_DIR=str(root / 'cache'), LIVE_SUB_RUNTIME_DIR=str(root / 'runtime'), SENSEVOICE_MODEL_DIR=str(root / 'models/sensevoice-small-fp32'), TRANSLATION_MODEL_PATH=str(root / 'models/translation.gguf'))
         return env
 
+    def fake_http_runtime(self, root, idle):
+        """Replace the sleeping fakes with authenticated HTTP servers shaped like the real services."""
+        env = self.fake_runtime(root)
+        server = ('#!' + sys.executable + """
+import json, os, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+args = sys.argv[1:]
+llama = '--port' in args
+port = int(args[args.index('--port') + 1]) if llama else int(os.environ['LIVE_SUB_ASR_PORT'])
+token = open(args[args.index('--api-key-file') + 1] if llama else os.environ['LIVE_SUB_API_TOKEN_FILE']).read().strip()
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        public = llama and self.path == '/health'
+        if not public and self.headers.get('Authorization') != 'Bearer ' + token:
+            self.send_response(401); self.send_header('Content-Length', '0'); self.end_headers(); return
+        body = json.dumps({'idle_seconds': float(os.environ['FAKE_IDLE']), 'config_directory': os.environ['LIVE_SUB_CONFIG_DIR']}).encode()
+        self.send_response(200); self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *args): pass
+HTTPServer(('127.0.0.1', port), Handler).serve_forever()
+""")
+        (root / 'bin/sensevoice-server').write_text(server)
+        llama = root / 'runtime/llama.cpp/build/bin/llama-server'
+        llama.write_text(server); llama.chmod(0o755)
+        env['FAKE_IDLE'] = str(idle)
+        return env
+
+    def run_supervisor(self, env, wait):
+        process = subprocess.Popen([sys.executable, str(Path(env['LIVE_SUB_ROOT']) / 'bin/models-start'), '--cpu'], env=env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            return process, process.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            return process, None
+
+    def test_idle_models_are_released_after_the_configured_time(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); env = self.fake_http_runtime(root, idle=3600)
+            env['LIVE_SUB_IDLE_MINUTES'] = '1'
+            process, code = self.run_supervisor(env, wait=20)
+            try:
+                output = process.stdout.read() if code is not None else ''
+                self.assertEqual(code, 0, 'Supervisor did not release idle models')
+                self.assertIn('Both models ready', output)
+                self.assertIn('Releasing the models', output)
+                self.assertFalse((root / 'state/models-process.json').exists())
+                self.assertFalse((root / 'state/api-token').exists())
+            finally:
+                if code is None:
+                    process.terminate(); process.wait(timeout=15)
+                process.stdout.close()
+
+    def test_active_or_disabled_idle_release_keeps_models_running(self):
+        for idle, minutes in ((0, '1'), (3600, '0')):
+            with self.subTest(idle=idle, minutes=minutes), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary); env = self.fake_http_runtime(root, idle=idle)
+                env['LIVE_SUB_IDLE_MINUTES'] = minutes
+                process, code = self.run_supervisor(env, wait=4)
+                try:
+                    self.assertIsNone(code, 'Supervisor must keep active or opted-out models loaded')
+                finally:
+                    process.terminate(); self.assertEqual(process.wait(timeout=15), 0); process.stdout.close()
+
+    def test_invalid_idle_setting_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); env = self.fake_runtime(root); env['LIVE_SUB_IDLE_MINUTES'] = '-1'
+            run = subprocess.run([sys.executable, str(root / 'bin/models-start'), '--cpu'], env=env, capture_output=True, text=True, timeout=8)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn('LIVE_SUB_IDLE_MINUTES', run.stderr)
+            self.assertFalse((root / 'state/models-process.json').exists())
+
     def test_private_atomic_files_and_unsafe_links(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
