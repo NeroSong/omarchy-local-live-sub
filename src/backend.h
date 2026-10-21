@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QProcess>
+#include <QTimer>
 #include <QNetworkAccessManager>
 #include <QQueue>
 #include <QVariantList>
@@ -55,6 +56,8 @@ private:
     struct AudioJob { QByteArray pcm; qint64 endMs; int utterance; bool final; };
     struct TextJob { int index; QString text; qint64 endMs; QString language; };
     void startCapture(const QString &source);
+    void probeServices(const QString &source, quint64 generation, bool mayStartServices);
+    void startServices(const QString &source, quint64 generation);
     void consume(const QByteArray &data);
     void queueAudio(Segmenter::Update update);
     void recognizeNext();
@@ -69,7 +72,10 @@ private:
     QString message = "Choose a microphone to start local bilingual captions", failure;
     QStringList messageArguments, failureArguments;
     bool active = false, starting = false, asrBusy = false, translationBusy = false, isDemo = false, dirty = false;
-    QProcess capture, enumerate, agentCheck;
+    QProcess capture, enumerate, agentCheck, launcher;
+    QTimer keepalive;
+    QString startCommand;
+    bool autoStartServices = false;
     QNetworkAccessManager network;
     QPointer<QNetworkReply> startupReply;
     quint64 startupGeneration = 0;

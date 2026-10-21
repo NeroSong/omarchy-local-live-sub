@@ -36,8 +36,8 @@ English settings: choose your microphone, spoken language, and topic vocabulary.
 | Requirement | Details |
 | --- | --- |
 | Desktop | x86_64 Omarchy / Arch Linux, in your logged-in desktop session |
-| Verified hardware | Intel Core Ultra 9 285H CPU with Intel integrated graphics using Vulkan |
-| Memory & disk | 32 GB RAM recommended, at least 16 GB; allow 20 GB free disk space for setup |
+| Verified hardware | Intel Core Ultra 9 285H, and Intel Core i7-1260P (Iris Xe, 16 GB RAM, Huawei MateBook), both with Intel integrated graphics using Vulkan |
+| Memory & disk | 16 GB RAM is enough (verified); about 10 GB free disk space for setup |
 | Microphone | A microphone positioned for the people speaking |
 | First setup | Internet access to GitHub, Hugging Face, and PyPI; about 2.85 GB of models, plus dependencies and source code |
 
@@ -132,11 +132,11 @@ For separate topic folders, the complete glossary schema, and decoder details, s
 
 ## Local processing and service lifecycle
 
-Audio and caption text are processed on your machine. The default recognition and translation services listen only on `127.0.0.1:8178` and `127.0.0.1:8179`. Capture uses an independent ffmpeg process and does not change default audio devices, gain, global shortcuts, or other speech-input tools.
+Audio and caption text are processed on your machine. The default recognition and translation services listen only on `127.0.0.1:8178` and `127.0.0.1:8179` and require a per-run private token (`~/.local/state/live-sub/api-token`, readable only by you), so other local users and web pages cannot use them. Capture uses an independent ffmpeg process and does not change default audio devices, gain, global shortcuts, or other speech-input tools.
 
 Audio is kept in memory. Caption files are written when you export; `~/.local/state/live-sub/logs/` may also contain recognized text, and service startup replaces the ASR/translation logs while launcher/UI logs append. Treat logs and exports as conversation data.
 
-Closing the window leaves models loaded for the next conversation. To check or release them:
+Models are released automatically after 15 minutes without captions (about 1.5 GB of RAM for recognition, plus the translation model). While captions are running, the app keeps them alive during quiet stretches; when you start captions again after a release, the app reloads the models, which takes a short moment. Set `LIVE_SUB_IDLE_MINUTES` (0 keeps them loaded until stopped) to change this. To check or release them immediately:
 
 ```bash
 ./bin/start --status

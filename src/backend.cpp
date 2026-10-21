@@ -34,6 +34,19 @@ Backend::Backend(QString directory, bool demo, QObject *parent)
     if (asrBase.endsWith('/')) asrBase.chop(1);
     if (translationBase.endsWith('/')) translationBase.chop(1);
     network.setProxy(QNetworkProxy::NoProxy);
+    // The supervisor releases idle models. Restart them on demand, but only for the default
+    // services that bin/start manages (or an explicit start command), never for custom URLs.
+    startCommand = qEnvironmentVariable("LIVE_SUB_START_COMMAND", root + "/bin/start");
+    autoStartServices = !demo && QFileInfo(startCommand).isExecutable()
+        && (qEnvironmentVariableIsSet("LIVE_SUB_START_COMMAND")
+            || (!qEnvironmentVariableIsSet("LIVE_SUB_ASR_URL") && !qEnvironmentVariableIsSet("LIVE_SUB_TRANSLATION_URL")));
+    keepalive.setInterval(qEnvironmentVariableIntValue("LIVE_SUB_KEEPALIVE_MS") > 0 ? qEnvironmentVariableIntValue("LIVE_SUB_KEEPALIVE_MS") : 60000);
+    // Quiet stretches during a meeting must not look idle to the model supervisor.
+    connect(&keepalive, &QTimer::timeout, this, [this] {
+        if (!active) { keepalive.stop(); return; }
+        auto *reply = network.post(request(asrBase, "/keepalive"), QByteArray());
+        connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    });
     segmenter.silenceFrames = 45; // Allow a short breath inside the same sentence.
     segmenter.maxSpeechBytes = 18 * 32000; // Bound very long monologues without cutting every three seconds.
     segmenter.previewBytes = 2 * 32000;
@@ -104,13 +117,17 @@ Backend::~Backend() {
         reply->abort();
     }
     capture.disconnect(this); enumerate.disconnect(this); agentCheck.disconnect(this);
-    for (auto *p : {&capture, &enumerate, &agentCheck}) {
+    launcher.disconnect(this);
+    for (auto *p : {&capture, &enumerate, &agentCheck, &launcher}) {
         if (p->state() != QProcess::NotRunning) { p->terminate(); if (!p->waitForFinished(1500)) { p->kill(); p->waitForFinished(500); } }
     }
 }
 QNetworkRequest Backend::request(const QString &base, const QString &path) const {
     QNetworkRequest req{QUrl(base + path)};
     req.setTransferTimeout(60000);
+    // The token changes with every service start, so read it per request.
+    if (const auto token = PrivateStorage::apiToken(); !token.isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + token.toLatin1());
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     return req;
 }
@@ -167,14 +184,19 @@ void Backend::toggle(const QString &source, const QString &language, double thre
     sourceLanguage = language; segmenter.reset(); segmenter.thresholdDb = threshold;
     starting = true; setMessage("Checking local recognition and translation services…"); emit changed();
     const auto generation = ++startupGeneration;
+    probeServices(source, generation, true);
+}
+void Backend::probeServices(const QString &source, quint64 generation, bool mayStartServices) {
     // Probe both models before acquiring the microphone.
     auto *asr = network.get(request(asrBase, "/"));
     startupReply = asr;
-    connect(asr, &QNetworkReply::finished, this, [this, asr, source, generation] {
+    connect(asr, &QNetworkReply::finished, this, [this, asr, source, generation, mayStartServices] {
         if (!starting || generation != startupGeneration) { asr->deleteLater(); return; }
         startupReply.clear();
         const bool ok = asr->error() == QNetworkReply::NoError;
+        const bool refused = asr->error() == QNetworkReply::ConnectionRefusedError;
         asr->deleteLater();
+        if (!ok && refused && mayStartServices && autoStartServices) { startServices(source, generation); return; }
         if (!ok) { starting = false; setFailure("Recognition is not ready. Run bin/models-start first."); return; }
         auto *tr = network.get(request(translationBase, "/health"));
         startupReply = tr;
@@ -188,10 +210,30 @@ void Backend::toggle(const QString &source, const QString &language, double thre
         });
     });
 }
+void Backend::startServices(const QString &source, quint64 generation) {
+    setMessage("Starting local models…"); emit changed();
+    launcher.disconnect(this);
+    launcher.setStandardOutputFile(QProcess::nullDevice());
+    launcher.setStandardErrorFile(QProcess::nullDevice());
+    connect(&launcher, &QProcess::errorOccurred, this, [this, generation](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart || !starting || generation != startupGeneration) return;
+        starting = false; setFailure("Local models could not start. Check supervisor.log in the state directory.");
+    });
+    connect(&launcher, &QProcess::finished, this, [this, source, generation](int code, QProcess::ExitStatus status) {
+        if (!starting || generation != startupGeneration) return;
+        if (status != QProcess::NormalExit || code != 0) {
+            starting = false; setFailure("Local models could not start. Check supervisor.log in the state directory."); return;
+        }
+        setMessage("Checking local recognition and translation services…"); emit changed();
+        probeServices(source, generation, false);
+    });
+    launcher.start(startCommand, {"--services-only"});
+}
 void Backend::startCapture(const QString &source) {
     audioBytes = 0; if (!clock.isValid()) clock.start(); captureErrors.clear(); active = true;
     capture.start("ffmpeg", {"-nostdin", "-hide_banner", "-loglevel", "error", "-f", "pulse", "-i", source,
         "-ac", "1", "-ar", "16000", "-f", "s16le", "pipe:1"});
+    keepalive.start();
     setMessage("Listening · original first, translation follows"); emit changed();
 }
 void Backend::consume(const QByteArray &data) {
@@ -219,11 +261,13 @@ void Backend::stop() {
         auto reply = startupReply;
         startupReply.clear();
         if (reply) reply->abort();
+        launcher.disconnect(this);
+        if (launcher.state() != QProcess::NotRunning) launcher.terminate(); // the supervisor keeps running on its own
         setMessage("Caption startup cancelled"); emit changed();
         return;
     }
     if (!active) return;
-    active = false; capture.terminate();
+    active = false; keepalive.stop(); capture.terminate();
     QTimer::singleShot(1500, this, [this] { if (!active && capture.state() != QProcess::NotRunning) capture.kill(); });
     setMessage("Recording stopped · finishing pending captions"); emit changed();
 }

@@ -21,6 +21,7 @@ import wave
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'bin'))
 from asr_service import ASRHandler, ASRService, BoundedASRServer
+from lifecycle import create_token
 
 
 def audio_request(language='en', audio=None):
@@ -138,6 +139,47 @@ class ServiceTests(unittest.TestCase):
         response.begin()
         data = response.read()
         return response.status, json.loads(data) if data else {}
+
+    def test_idle_time_counts_inference_and_keepalive_but_not_health(self):
+        now = [100.0]
+        service = ASRService(lambda pcm, language: {'text': 'x', 'language': 'en'},
+                             lambda: {'config_revision': 'r', 'config_error': '', 'hotwords': []},
+                             {'engine': 'sensevoice'}, clock=lambda: now[0])
+        self.server = BoundedASRServer(('127.0.0.1', 0), service, handler_class=QuietHandler, token='t')
+        self.server.read_started = queue.Queue()
+        self.address = self.server.server_address
+        self.server_thread = threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        self.server_thread.start()
+        auth = {'Authorization': 'Bearer t'}
+        now[0] += 600
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 600.0)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 600.0, 'Health polling must not count as activity')
+        self.assertEqual(self.request('POST', '/keepalive', headers=auth)[0], 200)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 0.0)
+        now[0] += 300
+        body, headers = audio_request()
+        self.assertEqual(self.request('POST', '/inference', body, {**headers, **auth})[0], 200)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 0.0)
+        now[0] += 5
+        self.assertEqual(self.request('POST', '/keepalive')[0], 401)
+        self.assertEqual(self.request('GET', '/', headers=auth)[1]['idle_seconds'], 5.0, 'Unauthorized keepalive must not reset idleness')
+
+    def test_token_is_required_for_health_and_inference(self):
+        decoded = []
+        self.start(decode=lambda pcm, language: decoded.append(language) or {'text': 'x', 'language': 'en'}, token='secret')
+        body, audio_headers = audio_request()
+        good = {'Authorization': 'Bearer secret'}
+        for headers in ({}, {'Authorization': 'Bearer wrong'}, {'Authorization': 'secret'}, {'Authorization': 'Bearer secret '}):
+            status, payload, response = self.request('GET', '/', headers=headers)
+            self.assertEqual((status, payload), (401, {'error': 'Unauthorized'}), headers)
+            self.assertEqual(response.get('WWW-Authenticate'), 'Bearer')
+            status, _, _ = self.request('POST', '/inference', body, {**audio_headers, **headers})
+            self.assertEqual(status, 401, headers)
+        self.assertEqual(decoded, [], 'Unauthorized audio must never reach recognition')
+        self.assertEqual(self.request('GET', '/', headers=good)[0], 200)
+        status, payload, _ = self.request('POST', '/inference', body, {**audio_headers, **good})
+        self.assertEqual((status, payload['text']), (200, 'x'))
+        self.assertEqual(decoded, ['en'])
 
     def test_valid_audio_and_health_remain_compatible(self):
         received = []
@@ -391,8 +433,11 @@ class EntryPointTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, 'asr-config.json').write_text(json.dumps({'decoder': 'greedy', 'threads': 3}))
+            token = Path(directory, 'state/api-token')
+            create_token(token)
             with patch.dict(sys.modules, fake_modules), patch.dict(
-                os.environ, {'LIVE_SUB_CONFIG_DIR': directory, 'SENSEVOICE_DECODER': 'greedy'}):
+                os.environ, {'LIVE_SUB_CONFIG_DIR': directory, 'SENSEVOICE_DECODER': 'greedy',
+                             'LIVE_SUB_API_TOKEN_FILE': str(token)}):
                 entry = runpy.run_path(str(ROOT / 'bin/sensevoice-server'))
                 with patch.dict(entry['main'].__globals__, {'BoundedASRServer': FakeServer}), redirect_stdout(io.StringIO()):
                     entry['main']()
@@ -400,9 +445,25 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual([engine['language'] for engine in engines], ['zh', 'en', 'auto'])
 
 
+    def test_entry_point_refuses_to_serve_without_a_private_token(self):
+        fake_modules = {'numpy': types.ModuleType('numpy')}
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, 'asr-config.json').write_text(json.dumps({'decoder': 'greedy'}))
+            for token in ('', str(Path(directory, 'missing'))):
+                with self.subTest(token=token), patch.dict(sys.modules, fake_modules), patch.dict(
+                    os.environ, {'LIVE_SUB_CONFIG_DIR': directory, 'SENSEVOICE_DECODER': 'greedy',
+                                 'LIVE_SUB_API_TOKEN_FILE': token}):
+                    entry = runpy.run_path(str(ROOT / 'bin/sensevoice-server'))
+                    engine = types.SimpleNamespace(OfflineRecognizer=types.SimpleNamespace(from_sense_voice=lambda **kw: object()))
+                    with patch.dict(sys.modules, {'sherpa_onnx': engine, 'model_assets': types.SimpleNamespace(asr_directory=lambda root: Path('/unused'))}), \
+                         redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                        entry['main']()
+
+
 class FakeServer:
-    def __init__(self, address, service):
+    def __init__(self, address, service, token=None):
         assert address[0] == '127.0.0.1'
+        assert token, 'The entry point must pass the private token to the server'
         assert service.health()['decoder'] == 'greedy'
 
     def __enter__(self):

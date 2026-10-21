@@ -12,8 +12,11 @@ import uuid
 import wave
 import unicodedata
 
+from app_paths import AppPaths
+from lifecycle import auth_headers
+
 def post(url, data, content_type):
-    request = urllib.request.Request(url, data, {"Content-Type": content_type})
+    request = urllib.request.Request(url, data, {"Content-Type": content_type, **auth_headers(AppPaths().token)})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(request, timeout=120) as response:
         return json.load(response)

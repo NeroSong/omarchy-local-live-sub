@@ -2,7 +2,7 @@
 
 [English](INSTALL.md) | **简体中文**
 
-适用对象：带麦克风的 x86_64 Omarchy / Arch Linux 主机。已验证的硬件为 Intel Core Ultra 9 285H CPU 与 Intel 集成显卡（Vulkan）。其他 x86_64 硬件配置也可能支持，但尚未验证，需按实际显卡确认驱动并测试运行效果；不依赖 NPU。以下默认使用 Vulkan 翻译、CPU 识别。
+适用对象：带麦克风的 x86_64 Omarchy / Arch Linux 主机。已验证的硬件为 Intel Core Ultra 9 285H，以及 Intel Core i7-1260P（Iris Xe，16 GB 内存），均使用 Intel 集成显卡（Vulkan）。其他 x86_64 硬件配置也可能支持，但尚未验证，需按实际显卡确认驱动并测试运行效果；不依赖 NPU。以下默认使用 Vulkan 翻译、CPU 识别。
 
 This guide is also the installation contract for an AI agent. Read `AGENTS.md` and `README.md`, run commands as the logged-in desktop user, and report failures accurately. The application supports Chinese and English UI and speech. This is a source checkout installation, without creating an Arch package.
 
@@ -17,7 +17,7 @@ This guide is also the installation contract for an AI agent. Read `AGENTS.md` a
 ## 1. 系统准备 / Prerequisites
 
 - x86_64 Omarchy / Arch Linux，Python **3.12–3.14**，能进入当前用户的桌面会话。
-- 内存建议 32 GB，至少预留 16 GB；安装前建议有 20 GB 空闲磁盘。实际占用随构建缓存变化。
+- 16 GB 内存即可（已在 16 GB 笔记本上验证）；安装前建议有约 10 GB 空闲磁盘。实际占用随构建缓存变化。
 - 首次准备需要访问 GitHub、Hugging Face、PyPI，下载模型约 2.85 GB，另外还需依赖和源码。准备完成后，字幕识别和翻译可离线运行。
 - 内置扬声器不是必要条件：当前应用只显示字幕，没有译文语音播放。
 
@@ -115,4 +115,4 @@ cd omarchy-local-live-sub
 
 这会把翻译引擎重新构建为 CPU 模式并记录选择，速度需要重新试用。`bin/start` 没有 `--cpu` 选项；若只是临时禁用已构建 Vulkan 引擎的 GPU，可另开终端运行 `./bin/models-start --cpu`，待就绪后再启动应用。不要在原有字幕任务进行中切换。
 
-无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不停止常驻模型。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；独立安装包不再依赖构建时的源码目录，卸载保留 XDG 用户数据。删除旧项目前应确认没有继续复用其中的模型，并备份旧词表和字幕。[系统集成指南](SYSTEM-INTEGRATION.md) 说明了迁移、升级与卸载。
+无需服务时 `./bin/models-stop` 释放项目模型占用；关闭字幕窗口本身不立即停止模型；无字幕 15 分钟后模型会自动释放（`LIVE_SUB_IDLE_MINUTES`，0 表示不自动释放），再次开始字幕时按需重新加载。用户入口可从 `~/.local/share/applications/live-sub.desktop` 删除（自定义 XDG_DATA_HOME 时在对应目录）；独立安装包不再依赖构建时的源码目录，卸载保留 XDG 用户数据。删除旧项目前应确认没有继续复用其中的模型，并备份旧词表和字幕。[系统集成指南](SYSTEM-INTEGRATION.md) 说明了迁移、升级与卸载。

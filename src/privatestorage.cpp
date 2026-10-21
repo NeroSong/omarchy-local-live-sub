@@ -19,6 +19,21 @@ QString PrivateStorage::stateDirectory() {
         qEnvironmentVariable("XDG_STATE_HOME", QDir::homePath() + "/.local/state") + "/live-sub");
 }
 
+QString PrivateStorage::apiToken() {
+    const auto path = qEnvironmentVariable("LIVE_SUB_API_TOKEN_FILE", stateDirectory() + "/api-token");
+    const int descriptor = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (descriptor < 0) return {};
+    struct stat info {};
+    QByteArray bytes;
+    if (::fstat(descriptor, &info) == 0 && S_ISREG(info.st_mode) && info.st_uid == ::geteuid()
+        && (info.st_mode & 0077) == 0 && info.st_size > 0 && info.st_size < 1024) {
+        bytes.resize(static_cast<int>(info.st_size));
+        if (::read(descriptor, bytes.data(), static_cast<size_t>(bytes.size())) != bytes.size()) bytes.clear();
+    }
+    ::close(descriptor);
+    return QString::fromLatin1(bytes).trimmed();
+}
+
 bool PrivateStorage::ensureDirectory(const QString &path, QString &error, bool tightenExisting) {
     error.clear();
     if (path.isEmpty() || !QDir::isAbsolutePath(path)) {

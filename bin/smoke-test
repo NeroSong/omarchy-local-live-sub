@@ -7,11 +7,14 @@ import sys
 import urllib.request
 import wave
 
+from app_paths import AppPaths
+from lifecycle import auth_headers
+
 
 def run():
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     def post(path, body, content_type):
-        request = urllib.request.Request(path, body, {'Content-Type': content_type})
+        request = urllib.request.Request(path, body, {'Content-Type': content_type, **auth_headers(AppPaths().token)})
         with opener.open(request, timeout=120) as response:
             return json.load(response)
     audio = io.BytesIO()
