@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'bin'))
-from lifecycle import atomic_json, private_open, read_owned
+from lifecycle import atomic_json, auth_headers, create_token, private_open, read_owned, read_token
 
 
 def free_port():
@@ -40,7 +40,8 @@ class LifecycleTests(unittest.TestCase):
         sleeper = '#!' + sys.executable + '\nimport os, time\nprint(os.getpid(), flush=True)\ntime.sleep(120)\n'
         (root / 'bin/sensevoice-server').write_text(sleeper)
         llama = root / 'runtime/llama.cpp/build/bin/llama-server'
-        llama.parent.mkdir(parents=True); llama.write_text(sleeper); llama.chmod(0o755)
+        dump = sleeper.replace('time.sleep(120)', f'open({str(root / "llama.argv")!r}, "w").write("\\n".join(sys.argv))\ntime.sleep(120)').replace('import os, time', 'import os, sys, time')
+        llama.parent.mkdir(parents=True); llama.write_text(dump); llama.chmod(0o755)
         env = {k:v for k,v in os.environ.items() if not k.startswith(('LIVE_SUB_', 'SENSEVOICE_', 'TRANSLATION_'))}
         # Never depend on, or collide with, a developer's real services on 8178/8179.
         env.update(LIVE_SUB_ASR_PORT=str(free_port()), LIVE_SUB_TRANSLATION_PORT=str(free_port()), LIVE_SUB_ROOT=str(root), LIVE_SUB_CONFIG_DIR=str(root), LIVE_SUB_STATE_DIR=str(root / 'state'), LIVE_SUB_DATA_DIR=str(root / 'data'), LIVE_SUB_CACHE_DIR=str(root / 'cache'), LIVE_SUB_RUNTIME_DIR=str(root / 'runtime'), SENSEVOICE_MODEL_DIR=str(root / 'models/sensevoice-small-fp32'), TRANSLATION_MODEL_PATH=str(root / 'models/translation.gguf'))
@@ -63,6 +64,20 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(victim.read_text(), 'untouched')
             finally:
                 os.umask(old)
+
+    def test_token_is_fresh_private_and_ignored_when_unsafe(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'state/api-token'
+            first = create_token(path)
+            self.assertEqual(read_token(path), first)
+            self.assertEqual(auth_headers(path), {'Authorization': 'Bearer ' + first})
+            self.assertNotEqual(create_token(path), first)
+            path.chmod(0o640)
+            self.assertIsNone(read_token(path))
+            self.assertEqual(auth_headers(path), {})
+            path.unlink(); (path.parent / 'real').write_text('x'); (path.parent / 'real').chmod(0o600)
+            path.symlink_to(path.parent / 'real')
+            self.assertIsNone(read_token(path))
 
     def test_foreign_and_malformed_records_are_not_owned(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -88,12 +103,22 @@ class LifecycleTests(unittest.TestCase):
                 self.assertNotEqual(second.returncode, 0)
                 self.assertIn('already running', second.stderr)
                 self.assertEqual(json.loads(state.read_text()), record)
+                token = root / 'state/api-token'
+                self.assertEqual(token.stat().st_mode & 0o777, 0o600)
+                self.assertGreaterEqual(len(token.read_text().strip()), 32)
+                deadline = time.monotonic() + 5
+                while not (root / 'llama.argv').exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                arguments = (root / 'llama.argv').read_text().split('\n')
+                self.assertEqual(arguments[arguments.index('--api-key-file') + 1], str(token))
+                self.assertNotIn(token.read_text().strip(), arguments)
                 for path in (state, root / 'state/logs/asr.log', root / 'state/logs/translation.log'):
                     self.assertEqual(path.stat().st_mode & 0o777, 0o600)
                 stop = subprocess.run([sys.executable, str(root / 'bin/models-stop')], env=env, capture_output=True, text=True, timeout=15)
                 self.assertEqual(stop.returncode, 0, stop.stderr)
                 self.assertEqual(first.wait(timeout=5), 0)
                 self.assertFalse(state.exists())
+                self.assertFalse(token.exists(), 'Token must not outlive the services')
                 for name in ('asr', 'translation'):
                     pid = int((root / f'state/logs/{name}.log').read_text().strip())
                     self.assertFalse(Path(f'/proc/{pid}').exists(), 'Owned child was not reaped')

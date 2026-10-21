@@ -3,9 +3,11 @@
 import json
 import os
 from pathlib import Path
+import sys
 import numpy as np
 
 from asr_service import ASRService, BoundedASRServer
+from lifecycle import read_token
 from model_assets import asr_directory
 
 
@@ -61,7 +63,10 @@ def main():
         'decoder': mode, 'config_directory': str(config_dir),
     })
     port = int(os.environ.get('LIVE_SUB_ASR_PORT', '8178'))
-    with BoundedASRServer(('127.0.0.1', port), service) as server:
+    token = read_token(os.environ.get('LIVE_SUB_API_TOKEN_FILE', ''))
+    if not token:
+        sys.exit('LIVE_SUB_API_TOKEN_FILE must name a private token file; start this service with bin/models-start.')
+    with BoundedASRServer(('127.0.0.1', port), service, token=token) as server:
         print(f'SenseVoice Small FP32 ready on 127.0.0.1:{port} (CPU, decoder={mode})', flush=True)
         server.serve_forever()
 

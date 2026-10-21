@@ -13,6 +13,7 @@ import urllib.request
 
 from model_assets import ASR_REPO, ASR_FILES, asr_directory, translation_path, checksum
 from app_paths import AppPaths
+from lifecycle import auth_headers
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ('git', 'cmake', 'make', 'g++', 'pkg-config', 'ffmpeg', 'pactl', 'qmake6')
@@ -112,7 +113,7 @@ def inspect(preflight=False, cpu=False, services=False, verify_models=False):
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         for name, url in [('recognition_service', 'http://127.0.0.1:8178/'), ('translation_service', 'http://127.0.0.1:8179/health')]:
             try:
-                with opener.open(url, timeout=5) as response:
+                with opener.open(urllib.request.Request(url, headers=auth_headers(paths.token)), timeout=5) as response:
                     value = json.load(response)
                 if name == 'recognition_service' and value.get('config_directory') != str(config.resolve()):
                     raise ValueError('Recognition service belongs to another configuration directory')

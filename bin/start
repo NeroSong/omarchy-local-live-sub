@@ -9,7 +9,7 @@ import time
 import urllib.request
 
 from app_paths import AppPaths
-from lifecycle import acquire_lock, private_directory, private_open, read_owned
+from lifecycle import acquire_lock, auth_headers, private_directory, private_open, read_owned
 
 paths = AppPaths()
 root = paths.root
@@ -25,7 +25,7 @@ opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def ready():
     try:
         for url in ["http://127.0.0.1:8178/", "http://127.0.0.1:8179/health"]:
-            with opener.open(url, timeout=1) as response:
+            with opener.open(urllib.request.Request(url, headers=auth_headers(paths.token)), timeout=1) as response:
                 if response.status != 200:
                     return False
                 if url.endswith('8178/'):

@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import secrets
 import stat
 import tempfile
 
@@ -46,7 +47,7 @@ def acquire_lock(path, blocking=True):
         raise
 
 
-def atomic_json(path, value):
+def atomic_text(path, text):
     path = Path(path)
     private_directory(path.parent)
     if path.is_symlink():
@@ -55,13 +56,39 @@ def atomic_json(path, value):
     try:
         with os.fdopen(fd, 'w') as output:
             os.fchmod(output.fileno(), 0o600)
-            json.dump(value, output)
-            output.write('\n')
+            output.write(text)
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
+
+
+def atomic_json(path, value):
+    atomic_text(path, json.dumps(value) + '\n')
+
+
+def create_token(path):
+    """Write a fresh per-run bearer token readable only by this user."""
+    token = secrets.token_urlsafe(32)
+    atomic_text(path, token + '\n')
+    return token
+
+
+def read_token(path):
+    """Return the token only from a private regular file owned by this user."""
+    try:
+        info = Path(path).lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            return None
+        return Path(path).read_text().strip() or None
+    except OSError:
+        return None
+
+
+def auth_headers(path):
+    token = read_token(path)
+    return {'Authorization': 'Bearer ' + token} if token else {}
 
 
 def process_stat(pid):

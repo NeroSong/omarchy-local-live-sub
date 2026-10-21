@@ -23,9 +23,15 @@ hardware.
   An explicit export/settings override must use an appropriate private directory;
   the UI does not chmod an unrelated existing shared directory.
 
-The localhost services are not an authenticated multi-user API. Their fixed ports
-can be occupied by another user/process; the app reports that conflict rather
-than terminating an unrelated process. Do not expose them through a public proxy.
+The localhost services require a bearer token. `bin/models-start` writes a fresh
+random token to `$XDG_STATE_HOME/live-sub/api-token` (0600) for each run and removes it
+on exit; the ASR adapter and `llama-server` (`--api-key-file`) reject requests without it,
+so other local users and web pages cannot submit audio or read configuration. The token is
+passed by file path, never on a command line. llama.cpp keeps `/health` public; it reveals
+no meeting data. This does not isolate the services from other processes running as the
+same user, which can read the token file. Fixed ports can still be occupied by another
+user/process; the app reports that conflict rather than terminating an unrelated process.
+Do not expose the ports through a public proxy.
 
 ## 2. Read-only code, per-user storage
 

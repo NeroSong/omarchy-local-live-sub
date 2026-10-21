@@ -138,6 +138,53 @@ private slots:
         QVERIFY(!backend.startingCapture()); QVERIFY(!backend.recording()); QVERIFY(!backend.busy());
         QVERIFY(!QFileInfo::exists(dir.filePath("captured")));
     }
+    void apiTokenIsReadOnlyFromPrivateRegularFile() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("api-token");
+        TestEnvironment env;
+        env.set("LIVE_SUB_API_TOKEN_FILE", path.toUtf8());
+        QVERIFY(PrivateStorage::apiToken().isEmpty());
+        QFile token(path);
+        QVERIFY(token.open(QIODevice::WriteOnly)); token.write("secret-token\n"); token.close();
+        QVERIFY(token.setPermissions(QFile::ReadOwner | QFile::WriteOwner));
+        QCOMPARE(PrivateStorage::apiToken(), QString("secret-token"));
+        QVERIFY(token.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup));
+        QVERIFY(PrivateStorage::apiToken().isEmpty());
+        QVERIFY(token.setPermissions(QFile::ReadOwner | QFile::WriteOwner));
+        const auto link = dir.filePath("linked-token");
+        QVERIFY(QFile::link(path, link));
+        env.set("LIVE_SUB_API_TOKEN_FILE", link.toUtf8());
+        QVERIFY(PrivateStorage::apiToken().isEmpty());
+    }
+    void localServiceRequestsCarryTheBearerToken() {
+        QTemporaryDir dir;
+        auto write = [&](const QString &name, const QByteArray &bytes, bool executable = false) {
+            QFile file(dir.filePath(name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return false;
+            file.close();
+            return file.setPermissions(executable ? QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner : QFile::ReadOwner | QFile::WriteOwner);
+        };
+        QVERIFY(write("glossary.json", "[]"));
+        QVERIFY(write("api-token", "secret-token\n"));
+        QVERIFY(write("ffmpeg", "#!/bin/sh\nexit 1\n", true));
+        QVERIFY(write("pactl", "#!/bin/sh\nprintf '[]\\n'\n", true));
+        QTcpServer asr, translation;
+        QVERIFY(asr.listen(QHostAddress::LocalHost));
+        QVERIFY(translation.listen(QHostAddress::LocalHost));
+        TestEnvironment env;
+        env.set("PATH", dir.path().toUtf8());
+        env.set("LIVE_SUB_CONFIG_DIR", dir.path().toUtf8());
+        env.set("LIVE_SUB_API_TOKEN_FILE", dir.filePath("api-token").toUtf8());
+        env.set("LIVE_SUB_ASR_URL", ("http://127.0.0.1:" + QString::number(asr.serverPort())).toUtf8());
+        env.set("LIVE_SUB_TRANSLATION_URL", ("http://127.0.0.1:" + QString::number(translation.serverPort())).toUtf8());
+        Backend backend(dir.path());
+        backend.toggle("test-microphone", "auto", -42);
+        QTRY_VERIFY(asr.hasPendingConnections());
+        auto *socket = asr.nextPendingConnection();
+        QTRY_VERIFY(socket->bytesAvailable() > 0);
+        QVERIFY2(socket->readAll().toLower().contains("authorization: bearer secret-token\r\n"), "Probe must send the private token");
+        backend.stop();
+    }
     void startupCancellation_data() {
         QTest::addColumn<bool>("translationProbe");
         QTest::addColumn<bool>("toggleAgain");

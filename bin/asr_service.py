@@ -3,6 +3,7 @@ from copy import deepcopy
 from email.parser import BytesParser
 from email.policy import default
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import hmac
 import io
 import json
 import re
@@ -94,12 +95,14 @@ class BoundedASRServer(ThreadingMixIn, HTTPServer):
     request_queue_size = 16
 
     def __init__(self, address, service, *, max_connections=8, max_uploads=2,
-                 read_timeout=10.0, write_timeout=2.0, handler_class=None):
+                 read_timeout=10.0, write_timeout=2.0, handler_class=None, token=None):
         if max_connections < 2 or not 1 <= max_uploads < max_connections:
             raise ValueError('Uploads must leave at least one connection for health')
         if read_timeout <= 0 or write_timeout <= 0:
             raise ValueError('Request timeouts must be positive')
         self.service = service
+        # Loopback is reachable by every local user and by browsers; require a bearer token.
+        self.token = token
         self.read_timeout = read_timeout
         self.write_timeout = write_timeout
         self._connections = threading.BoundedSemaphore(max_connections)
@@ -174,13 +177,27 @@ class ASRHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             if code == 503:
                 self.send_header('Retry-After', '1')
+            if code == 401:
+                self.send_header('WWW-Authenticate', 'Bearer')
             self.end_headers()
             self.wfile.write(body)
         except OSError:
             # Do not attempt to send a second error response after a failed write.
             pass
 
+    def _authorized(self):
+        expected = self.server.token
+        if expected is None:
+            return True
+        supplied = self.headers.get('Authorization', '')
+        if hmac.compare_digest(supplied.encode(), ('Bearer ' + expected).encode()):
+            return True
+        self.respond(401, {'error': 'Unauthorized'})
+        return False
+
     def do_GET(self):
+        if not self._authorized():
+            return
         if self.path not in ('/', '/health'):
             return self.respond(404, {'error': 'Unknown endpoint'})
         self.respond(200, self.server.service.health())
@@ -221,6 +238,8 @@ class ASRHandler(BaseHTTPRequestHandler):
         return pcm, language
 
     def do_POST(self):
+        if not self._authorized():
+            return
         if self.path != '/inference':
             return self.respond(404, {'error': 'Unknown endpoint'})
         if not self.server.uploads.acquire(blocking=False):

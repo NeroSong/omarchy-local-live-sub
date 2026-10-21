@@ -76,6 +76,7 @@ class AppPaths:
         self.runtime = _user_path(env.get('LIVE_SUB_RUNTIME_DIR') or self.data / 'runtime')
         self.models = self.cache / 'models'
         self.logs = self.state / 'logs'
+        self.token = self.state / 'api-token'
         self.packaged = (self.root / 'package.json').is_file()
         supplied = env.get('LIVE_SUB_LEGACY_ROOT') or env.get('LIVE_SUB_PROJECT')
         if not supplied and not self.packaged and (self.root / 'live-sub.pro').is_file():

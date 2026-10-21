@@ -13,7 +13,7 @@ import urllib.request
 
 from model_assets import asr_directory, translation_path
 from app_paths import AppPaths
-from lifecycle import acquire_lock, atomic_json, identity, private_directory, private_open, remove_owned
+from lifecycle import acquire_lock, atomic_json, create_token, identity, private_directory, private_open, remove_owned
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -72,10 +72,13 @@ def supervise(paths, args):
         for sock in reservations:
             sock.close()
     child_env["SENSEVOICE_MODEL_DIR"] = str(asr)
+    # A fresh token per run: other local users and web pages cannot call the loopback services.
+    create_token(paths.token)
+    child_env["LIVE_SUB_API_TOKEN_FILE"] = str(paths.token)
     commands = [
         [str(asr_python), str(asr_server)],
         [str(llama), "--host", "127.0.0.1", "--port", str(ports[1]), "-m", str(translation),
-         "--alias", "translator", "-c", "4096", "-t", "6", "-ngl", "0" if cpu else "99", "--parallel", "1"]
+         "--alias", "translator", "--api-key-file", str(paths.token), "-c", "4096", "-t", "6", "-ngl", "0" if cpu else "99", "--parallel", "1"]
     ]
     private_directory(paths.logs)
     children, logs = [], []
@@ -129,6 +132,7 @@ def supervise(paths, args):
         for log in logs:
             log.close()
         remove_owned(pidfile, record)
+        paths.token.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     try:

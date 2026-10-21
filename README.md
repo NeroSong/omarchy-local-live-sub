@@ -132,7 +132,7 @@ For separate topic folders, the complete glossary schema, and decoder details, s
 
 ## Local processing and service lifecycle
 
-Audio and caption text are processed on your machine. The default recognition and translation services listen only on `127.0.0.1:8178` and `127.0.0.1:8179`. Capture uses an independent ffmpeg process and does not change default audio devices, gain, global shortcuts, or other speech-input tools.
+Audio and caption text are processed on your machine. The default recognition and translation services listen only on `127.0.0.1:8178` and `127.0.0.1:8179` and require a per-run private token (`~/.local/state/live-sub/api-token`, readable only by you), so other local users and web pages cannot use them. Capture uses an independent ffmpeg process and does not change default audio devices, gain, global shortcuts, or other speech-input tools.
 
 Audio is kept in memory. Caption files are written when you export; `~/.local/state/live-sub/logs/` may also contain recognized text, and service startup replaces the ASR/translation logs while launcher/UI logs append. Treat logs and exports as conversation data.
 

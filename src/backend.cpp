@@ -111,6 +111,9 @@ Backend::~Backend() {
 QNetworkRequest Backend::request(const QString &base, const QString &path) const {
     QNetworkRequest req{QUrl(base + path)};
     req.setTransferTimeout(60000);
+    // The token changes with every service start, so read it per request.
+    if (const auto token = PrivateStorage::apiToken(); !token.isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + token.toLatin1());
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     return req;
 }
